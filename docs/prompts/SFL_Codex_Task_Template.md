@@ -1,24 +1,24 @@
 # SFL_Codex_Task_Template.md
+**Task ID**: sfl-YYYYMMDD-xxx
+**Title**: <concise objective>
 
-## Task-ID
-<numeric or slug>
+## Context (paste snippets or linked lines)
+- Seed: <hex>
+- Current branch / file targets:
+  - SearchForLife_v10_infinite.html
 
-## Objective
-<what to build>
+## Requirements
+- [ ] Determinism preserved
+- [ ] FPS target passes
+- [ ] No new globals unless necessary
+- [ ] No external deps / fetches
+- [ ] Fallback path keeps rendering
 
-## Acceptance Criteria
-- [ ] <criteria 1>
-- [ ] <criteria 2>
+## Acceptance Tests
+1. <describe visual/behavioural checks>
+2. <edge cases>
 
-## Constraints
-- Deterministic RNG (sfc32×2).
-- No external calls; CSP inline only.
-- FPS budget: 16.6 ms (desktop) / 33.3 ms (mobile).
-
-## Deliverables
-- Impacted Files List (▲ alphabetical).
-- Diffs or full files as requested.
-- Self‑tests updated and passing.
-
-## Notes
-- Reference `docs/Master_Overview_And_Manifest_SFL.md` invariants.
+## Definition of Done
+- PR opened with diff ≤ 250 LOC if possible
+- Updated docs Progress Ledger
+- Added brief comment in code with `// sfl:<taskid>` markers

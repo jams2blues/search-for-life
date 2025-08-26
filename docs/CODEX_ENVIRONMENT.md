@@ -1,42 +1,48 @@
-# CODEX_ENVIRONMENT — ZeroUnbound • Search for Life
+# CODEX Environment — ZeroUnbound / Search for Life
+**Mode:** _Single-file, fully on-chain HTML_. No external deps required.
 
-These settings mirror the OpenAI Codex "Environment Configuration" panel.
+## Required Codex Settings (UI → Environments → _search-for-life_)
+- **Container image:** `universal` (preinstalled packages)
+- **Container caching:** `On`
+- **Agent internet access:** `On` (only used if Node is missing)
+- **Domain allowlist:** `All` (unused by this repo)
+- **Environment variables / Secrets:** _none needed_
 
-## Container
-- **Container image**: `universal` (Ubuntu 24.04)
-- **Packages**: `Preinstalled packages` ✓
-- **Agent internet access**: **On**
-- **Domain allowlist**: **All (unrestricted)**
-- **Environment variables** (optional, redacted in public repos):
-  - `OPENAI_API_KEY` — if your agent calls the API on sub‑tasks.
-  - `TZ` set to `UTC` for deterministic timestamps.
+## Scripts (paste into Codex UI)
 
-## Caching
-- **Container Caching**: **On**
-  - Setup script runs once per cache. Maintenance runs on each reuse.
-
-## Setup Script (Manual)
+### Setup script (Manual)
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-./scripts/codex-setup.sh
+set -Eeuo pipefail
+bash scripts/codex-setup.sh
 ```
 
-## Maintenance Script
+### Maintenance script
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-./scripts/codex-maintenance.sh
+set -Eeuo pipefail
+bash scripts/codex-maintenance.sh
 ```
 
-## Files Codex must read at boot
-1. `AGENTS.md`
-2. `docs/Master_Overview_And_Manifest_SFL.md`
-3. `docs/CODEX_ENVIRONMENT.md`
-4. `docs/prompts/SFL_Codex_SuperPrompt.md`
-5. `docs/prompts/SFL_Codex_Task_Template.md`
-6. `docs/prompts/tasks/*.md` (when present)
+> **Why this works:** our repo is a single inline HTML artifact with
+> no `package.json`. The setup script performs **no heavy installs**,
+> avoids `apt-get` (which can cause terminal disconnects), and only
+> installs Node if truly missing. Corepack/Yarn are enabled when present.
 
-## Local development helpers
-- `.gitattributes` forces LF endings (deterministic hashing).
-- `.editorconfig` standardises style.
+## Troubleshooting
+- **Red “Terminal errored” at the end of test:** this is often a UI
+  disconnect caused by long `apt-get` output (e.g., Chromium downloads).
+  Use the minimal scripts above — no apt steps, tiny output, stable exit.
+- **Want to run headless tests?** Add a separate task step; keep setup
+  minimal so container caching remains hot and reliable.
+
+## Deterministic Inputs for Agents
+Agents must **read**:
+- `docs/Master_Overview_And_Manifest_SFL.md`
+- `AGENTS.md`
+- `docs/prompts/SFL_Codex_SuperPrompt.md`
+- `docs/prompts/tasks/*`
+
+Agents must **respect**:
+- Fully on-chain, inline HTML. No external URLs/CDNs/IPFS.
+- Deterministic PRNG seeded by `tokenData.hash` or query param.
+- Frame-rate governor compatible with low‑end devices.
+

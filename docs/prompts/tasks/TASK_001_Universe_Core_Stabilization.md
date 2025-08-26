@@ -1,64 +1,103 @@
-# TASK_001_Universe_Core_Stabilization.md
+# TASK 001 — Universe Core Stabilization (SFL)
 
-## Objective
-Replace v10 prototype's ad‑hoc sector system & camera with a robust,
-deterministic **Universe Core** that supports smooth navigation,
-sector persistence, scalable LOD, and FTL warp matching the classic
-"Search for Life" wormhole aesthetic.
+**Owner:** Codex Agent  
+**Priority:** P0 (blocking)  
+**Branch:** `feat/universe-core-stabilization`  
+**Scope:** Single‑file HTML (`SearchForLife_v10_infinite.html`) with inline `<script>` only. No external deps. CSP must remain `default-src 'none'` and `script-src 'unsafe-inline'`.
 
-## Key Problems to Fix (from user feedback r1‑r10)
-1) **Visible sector seams** during warp; content pops / re‑rolls.
-2) **Planets & moons orbit too fast**; impossible to intercept.
-3) **Controls**: Missing acceleration ladder (cruise→boost→FTL);
-   mouse invert toggle; resolution‑agnostic HUD.
-4) **FPS**: ~3.8 fps on some runs; need governor + dynamic tiering.
-5) **Starfield**: monochrome & flat; add temperature‑based colours, twinkle, parallax.
-6) **System growth**: stars gain systems as player approaches; star collision = death.
-7) **Persistence**: deterministic across [seed, sector(x,y,z)], no changes when returning.
+---
 
-## Design
-- **Hash Grid**: cubic sectors of size `S = 1e6` units. Player at `(x,y,z)` maps to
-  `(sx,sy,sz)=floor(x/S)`. Sector seed `h = mix32(seed, sx,sy,sz)`. Use `Random(h)`.
-- **System Gen** (per sector):
-  - `Nstars ∈ [0..2]` via Poisson‑like RNG. Star class distribution OBAFGKM.
-  - For each star: temperature→colour (black‑body approx), radius, mass.
-  - **Solar system shell**: log‑mapping to render scale; orbital periods scaled with
-    Kepler‑like `T ~ a^(3/2)` but damped for playability.
-  - Planets: 0–12 with types (rock/gas/ice), rings, moons (0–4), belts, debris.
-- **LOD**:
-  - Far: billboard impostors (shaded discs), analytic halo & glare.
-  - Near: sphere mesh from unit icosahedron (subdivided), triplanar noise texture.
-- **Flight Model**:
-  - Velocity `v` with acceleration ladder: cruise/boost/warp.
-  - Warp engages spline‑based tunnel shader in screen‑space; time‑dilated orbits.
-- **Governor**:
-  - Maintain `targetDelta` (16.6/33.3 ms). If frame time spikes, reduce renderScale,
-    impostor detail, and sector draw radius; ramp back up when stable.
-- **HUD**: Canvas2D, DPR aware, anchored margins in CSS pixels; flexible layout grid.
+## Objectives
+
+1. **Deterministic, contiguous streaming universe**
+   - Use **sector hashing**: partition 3D space into cubic sectors (e.g. 4 AU per side). A sector seed is `hash(globalSeed, floor(x/size), floor(y/size), floor(z/size))`.
+   - Generation must be **pure** (idempotent) per sector seed. When revisiting, content is identical.
+   - Maintain a sliding window of loaded sectors around the player: `N x N x N` (configurable), with hysteresis to avoid churn.
+   - No hard square edges visible during warp: fade in/out newly loaded sector entities using temporal dithering (random per‑entity alpha ramp).
+
+2. **Kinematics & Navigation**
+   - Ship has **accelerometer** model:
+     - Throttle (0..1), acceleration `a = throttle * aMax`, with boost (SHIFT) up to `aMaxBoost`.
+     - Velocity clamped with **drag** curve for sublight; FTL engages at `|v| > vFTLThreshold`.
+   - **FTL visuals**: reuse & adapt earlier warp tunnel effect; hueshift with relativistic gradient.
+   - Mouse‑look: non‑inverted by default; toggle with `I`. Fix yaw/pitch mapping (Y up), pointer‑lock.
+   - WASD strafes, QE up/down, CTRL for brake. Gamepad optional.
+
+3. **Celestial Simulation (to‑scale but playable)**
+   - Star colors vary (OBAFGKM with temperature → color). Luminance falloff over distance; HDR tonemap to LDR.
+   - **Solar systems**: within `Rspawn` of a star, spawn planets & moons with stable orbits (semi‑major axis + eccentricity; orbital period via Kepler’s third law simplified).
+   - **Motion rates**: scaled time so bodies move perceptibly but remain catchable (max angular velocity capped).
+   - **Hazards**: Komets/asteroids with probability; collisions reduce hull; proximity to stars causes heat damage.
+   - **Deaths/Lives**: flying into stars destroys the ship → respawn at last safe position, decrement lives.
+
+4. **Landing & Planet LOD**
+   - Approach planet → **atmosphere entry** shader; once below altitude threshold, **planet surface mode**:
+     - Fractal heightmap (FBM/simplex) via deterministic seed.
+     - Triplanar texturing look using solid colors & bands (no external images).
+     - Simple scattering sky dome; day/night cycle synced to planet rotation.
+   - Takeoff with `X`. Preserve orbit frame & position on re‑entry to space.
+
+5. **Stars & Nebulae Aesthetics**
+   - Background starfield: parallax layers + chromatic variance + twinkle; keep cost ≤ 1.5 ms on mid devices.
+   - Nebulae: low‑frequency FBM billboards; alpha‑dithered to avoid banding. Deterministic per sector.
+
+6. **HUD, UI & Resolution‑Agnostic Layout**
+   - Scale all HUD elements via CSS pixels independent of DPR.
+   - Add FPS governor/target (adaptive): target 60; drop detail tiers (stars/nebula/galaxies) to keep ≥ 30.
+   - Show coordinates, velocity, throttle, FTL status, hull, heat, lives. Toggle HUD with `H`.
+   - Mobile: virtual joystick + throttle slider; same bindings where feasible.
+
+7. **Testing hooks & invariants**
+   - Determinism: navigating out and back into a sector must produce byte‑identical JSON of generated entities.
+   - No allocations per frame in hot paths (avoid GC spikes). Use pools.
+   - WebGL 2 only; no external libs. Fallback to Canvas2D starfield when WebGL not available.
+
+---
 
 ## Acceptance Criteria
-- [ ] Deterministic sector content; revisiting a sector shows identical systems.
-- [ ] Seamless transition across sector borders (no re‑roll pop); use overlap buffer.
-- [ ] FTL warp visuals match classic wormhole style; no 2D "corny" look.
-- [ ] Planets interceptable: max orbital angular velocity capped; time‑dilation at warp.
-- [ ] Non‑inverted mouse by default; `I` toggles inversion; sensitivity slider in HUD.
-- [ ] Frame‑time governor holds ≥58 FPS on desktop test; ≥28 FPS on mid mobile.
-- [ ] Star colours reflect spectral class; twinkle and Doppler shift at high speed.
-- [ ] Collision with star reduces lives to 0 (death & respawn); debris impacts reduce hull.
 
-## Constraints
-- Pure HTML + JS; inline; CSP `default-src 'none'`.
-- WebGL2; no third‑party libs.
-- Keep code lint‑clean; no console errors.
+- Stable FPS ≥ 30 on mid laptop (integrated GPU); ≥ 120 on high‑end.
+- FTL warp effect matches v4e aesthetic, with smooth sector fades.
+- Planets remain reachable; motion rates scaled.
+- Landing cycle works end‑to‑end and returns to space at same orbital position.
+- Deterministic streaming validated with debug hash overlay (`F3`).
+
+---
+
+## Implementation Notes
+
+- RNG: dual sfc32 streams; `rand3(i,j,k)` hash for sector seeding.
+- Sector cache LRU with limit (e.g. 512 sectors). Entities: stars, planets, moons, belts, debris, nebulae.
+- Shader modules inline: common.glsl, tonemap.glsl, noise.glsl (value/simplex), atmosphere.glsl, warp.glsl.
+- Draw order: skybox → distant stars → nebulae → stars → planets/moons → debris → cockpit HUD.
+- Use unsigned integer textures only if absolutely necessary; prefer vec4 packing in float textures.
+
+---
 
 ## Deliverables
-- **One** updated file: `SearchForLife_v10_infinite.html` (full).
-- Any new helper docs linked from HUD (embedded, not external).
-- An updated **controls reference** in the HUD.
 
-## Hints
-- Use a **fixed‑timestep accumulator** for physics: 60 Hz; interpolate for rendering.
-- Use a **reseedable Random** (`sfc32` pair); provide `nextFloat`, `nextInt`, `choice`.
-- Implement a **murmur3/xxhash‑like 32‑bit mixer** for `(sx,sy,sz)`.
-- For planet noise: fBm (simplex/value); triplanar approx: project noise on xyz and blend.
-- Star colour: map temperature (K) to RGB via approximate black‑body function.
+- Updated `SearchForLife_v10_infinite.html` implementing the above.
+- New `docs/perf/PROFILE_NOTES.md` capturing frame timings and tier thresholds.
+- Demo recordings (optional) under `docs/demos/` (GIF/MP4).
+
+---
+
+## Out of Scope (for this task)
+
+- Multiplayer, persistence to chain, on‑chain mint flows.  
+- PWA install; asset caching.
+
+---
+
+## Kickoff Checklist
+
+- [ ] Add sector RNG + streaming window.
+- [ ] Replace current warp with FTL module; fade in/out sectors.
+- [ ] Implement accelerometer + throttle + FTL thresholds.
+- [ ] Fix pointer‑lock & invert‑Y toggle.
+- [ ] Rework stars → varied spectral colors.
+- [ ] Add solar system spawning & orbital scaling with caps.
+- [ ] Add hazard & hull/heat damage model.
+- [ ] Implement landing + surface mode + takeoff.
+- [ ] Add FPS governor & tiered detail.
+- [ ] Harden determinism tests and debug overlays.
