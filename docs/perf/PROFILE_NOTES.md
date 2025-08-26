@@ -9,4 +9,4 @@ Frame time sampling on a mid laptop (Intel Iris Xe, 1920×1080):
 | FTL warp tunnel       |   ~8.0ms | ~120|
 
 Adaptive resolution drops `renderScale` from 1.0→0.6 when averaged FPS <30.
-Star/nebula layers cull when FPS <30 to maintain playability.
+Starfield stays anchored to camera (no translation drift) and trims point count 8k→2k when avg FPS <30.

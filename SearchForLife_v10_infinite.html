@@ -379,16 +379,14 @@ void main(){
 
 /* starfield (instanced points) */
 const VS_STARFIELD = `#version 300 es
-layout(location=0) in vec3 aPos;   // unit cube positions
+layout(location=0) in vec3 aPos;   // unit sphere directions
 layout(location=1) in vec3 aCol;   // rgb
-uniform mat4 uP, uV;
-uniform vec3 uCam;
+uniform mat4 uP, uVR;              // rotation-only view
 uniform float uScale;
 out vec3 vCol;
 void main(){
   vec3 world = aPos * uScale;
-  vec4 v = uV * vec4(world - uCam, 1.0);
-  // keep in view with projection
+  vec4 v = uVR * vec4(world, 1.0);
   gl_Position = uP * v;
   gl_PointSize = clamp(3.0 / max(0.15, -v.z), 1.0, 6.0);
   vCol = aCol;
@@ -462,7 +460,7 @@ function makeStarfield(N=10000, scale=2000){
   gl.bufferData(gl.ARRAY_BUFFER,col,gl.STATIC_DRAW);
   gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1,3,gl.FLOAT,false,0,0);
   gl.bindVertexArray(null);
-  return {vao, count:N, scale};
+  return {vao, count:N, drawCount:N, scale};
 }
 
 /*──────────────────────────────────────────────────────────────────────────────
@@ -756,15 +754,14 @@ function setCommonMatrices(){
 function drawStarfield(){
   gl.useProgram(progStarfield);
   const uP=gl.getUniformLocation(progStarfield,'uP');
-  const uV=gl.getUniformLocation(progStarfield,'uV');
-  const uCam=gl.getUniformLocation(progStarfield,'uCam');
+  const uVR=gl.getUniformLocation(progStarfield,'uVR');
   const uScale=gl.getUniformLocation(progStarfield,'uScale');
   gl.uniformMatrix4fv(uP,false,new Float32Array(projection));
-  gl.uniformMatrix4fv(uV,false,new Float32Array(view));
-  gl.uniform3fv(uCam,new Float32Array(camPos));
+  const viewRot=view.slice(); viewRot[12]=viewRot[13]=viewRot[14]=0;
+  gl.uniformMatrix4fv(uVR,false,new Float32Array(viewRot));
   gl.uniform1f(uScale, starfield.scale);
   gl.bindVertexArray(starfield.vao);
-  gl.drawArrays(gl.POINTS,0,starfield.count);
+  gl.drawArrays(gl.POINTS,0,starfield.drawCount);
   gl.bindVertexArray(null);
 }
 
@@ -934,6 +931,11 @@ function updateFPS(t){
   // dynamic resolution
   if(avgFps<28 && renderScale>0.6){ renderScale = Math.max(0.6, renderScale-0.05); }
   else if(avgFps>56 && renderScale<1.0){ renderScale = Math.min(1.0, renderScale+0.05); }
+  // starfield quality ladder
+  if(starfield){
+    if(avgFps<30 && starfield.drawCount>2000){ starfield.drawCount = Math.max(2000, starfield.drawCount-500); }
+    else if(avgFps>50 && starfield.drawCount<starfield.count){ starfield.drawCount = Math.min(starfield.count, starfield.drawCount+500); }
+  }
 }
 
 function drawFramegraph(){
