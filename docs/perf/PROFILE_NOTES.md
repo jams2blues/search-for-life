@@ -4,9 +4,9 @@ Frame time sampling on a mid laptop (Intel Iris Xe, 1920×1080):
 
 | Scene                  | Frame ms | FPS |
 |-----------------------|---------:|----:|
-| Empty sector          |   ~1.2ms | ~830|
-| Populated star system |  ~12.0ms | ~80 |
-| FTL warp tunnel       |   ~8.0ms | ~120|
+| Empty space           |   ~0.8ms | ~1250|
+| Nearby star sector    |   ~2.5ms | ~400 |
+| Warp overlay active   |   ~6.0ms | ~160 |
 
-Adaptive resolution drops `renderScale` from 1.0→0.6 when averaged FPS <30.
-Starfield stays anchored to camera (no translation drift) and trims point count 8k→2k when avg FPS <30.
+Pixel renderer uses a fixed 1/4‑scale logical canvas and keeps star sprites ≤1 px for a retro aesthetic.
+No dynamic resolution; sector streaming holds a 3×3 grid (~9 sectors).

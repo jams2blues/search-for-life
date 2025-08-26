@@ -3,1047 +3,172 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
-<meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline';">
-<title>Search for Life — v10 • ZeroUnbound • Infinite</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline';">
+<title>Search for Life — v10 • Pixel</title>
 <style>
-  :root{
-    --hud:#9cf;
-    --hud-dim:#5d9dbb;
-    --hud-bg:rgba(0,0,0,.35);
-    --hud-br:#0cf;
-  }
-  html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}
-  canvas{display:block;width:100vw;height:100vh;image-rendering:pixelated;outline:none}
-  #hud,#intro,#msg{
-    position:fixed;left:.75rem;bottom:.6rem;z-index:3;white-space:pre;
-    font:12px/1.25 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,'Apple Color Emoji','Segoe UI Emoji';
-    color:var(--hud); background:var(--hud-bg);
-    border:1px solid var(--hud-br); border-radius:4px;
-    padding:.45rem .55rem; user-select:none; pointer-events:none; text-shadow:0 1px 0 #000;
-    max-width:min(92vw,840px);
-  }
-  #hud.hidden{display:none}
-  #intro{
-    top:.6rem; bottom:auto; pointer-events:auto; cursor:default;
-  }
-  #intro b{color:#cff}
-  #msg{ left:auto; right:.75rem; bottom:.6rem; }
-  #reticle{
-    position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2;opacity:.9;
-    width:20px;height:20px;border-radius:50%;border:2px solid var(--hud-br); pointer-events:none;
-    box-shadow:0 0 0 1px rgba(0,255,255,.15), 0 0 6px rgba(0,255,255,.25) inset;
-  }
-  #framegraph{
-    position:fixed;right:.6rem;top:.6rem;z-index:3;pointer-events:none;
-    width:240px;height:60px;border:1px solid var(--hud-br);background:rgba(0,0,0,.25)
-  }
+html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}
+canvas{image-rendering:pixelated;width:100vw;height:100vh;display:block}
+#hud{position:fixed;left:4px;top:4px;color:#0ff;background:rgba(0,0,0,.4);padding:4px;font:12px monospace;white-space:pre}
 </style>
 </head>
 <body>
-<canvas id="gl"></canvas>
-<canvas id="framegraph"></canvas>
-<div id="reticle" aria-hidden="true"></div>
-<pre id="intro">Click to enter — <b>WASD/QE</b> move • <b>Shift</b> boost • <b>Ctrl</b> brake • <b>L</b> land • <b>X</b> take off • <b>I</b> invert mouse‑Y • <b>H</b> HUD
-</pre>
-<pre id="hud" class="hidden"></pre>
-<pre id="msg"></pre>
-
+<noscript><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIW2NkYGBgAAAABQABDQottAAAAABJRU5ErkJggg=="/></noscript>
+<canvas id="c"></canvas>
+<pre id="hud"></pre>
 <script>
-/*──────────────────────────────────────────────────────────────────────────────
-  ZeroUnbound — Search for Life • v10 Infinite
-  Single‑file, on‑chain‑ready WebGL2 experience. No external deps.
-  Author: @jams2blues (with GPT‑5 Pro engineering)
-  Highlights:
-  • Deterministic infinite sectors with contiguous streaming (3×3 ring)
-  • Smooth warp (FTL) with tunnel streaks (no square tiling seams)
-  • Variable speed flight model with accel/brake and velocity clamp
-  • Pointer‑lock mouselook (non‑inverted by default; toggle with I)
-  • Rate‑adaptive renderScale (dynamic framebuffer resolution) for FPS
-  • Stars with physical color temperature, twinkle & parallax
-  • Nearby sectors spawn star systems → stars, planets, moons, rings
-  • Orbits are slow & to-scale‑ish (artistic scaling) and deterministic
-  • Collision / heat near stars, hull integrity and lives
-  • Simple landing mode placeholder (low‑orbit hold; expands later)
-  • All content generated from stable hash(seed + integer coords)
-──────────────────────────────────────────────────────────────────────────────*/
-
-/*──────────────────────────────────────────────────────────────────────────────
-  0) Small utilities
-──────────────────────────────────────────────────────────────────────────────*/
-const $$ = (id)=>document.getElementById(id);
-const glCanvas = $$('gl');
-const hud = $$('hud');
-const intro = $$('intro');
-const msg = $$('msg');
-const framegraph = $$('framegraph');
-let gl;
-
-let DPR=1, W=0, H=0;
+/* Pixel art Search for Life — deterministic 2D sprite prototype */
+(function(){
+const canvas=document.getElementById('c');
+const hud=document.getElementById('hud');
+let ctx;
+let DPR=1, W=0, H=0, SCALE=4;
 function fit(){
-  DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio||1));
-  W = Math.round(innerWidth * DPR);
-  H = Math.round(innerHeight * DPR);
-  glCanvas.width = W; glCanvas.height = H;
-  glCanvas.style.width = '100vw';
-  glCanvas.style.height = '100vh';
-  framegraph.width = 240; framegraph.height = 60;
+  DPR=1; // keep logical pixels
+  W=Math.floor(innerWidth/SCALE);
+  H=Math.floor(innerHeight/SCALE);
+  canvas.width=W;
+  canvas.height=H;
+  canvas.style.width=W*SCALE+'px';
+  canvas.style.height=H*SCALE+'px';
+  ctx=canvas.getContext('2d');
+  ctx.imageSmoothingEnabled=false;
 }
-addEventListener('resize', fit, {passive:true}); fit();
+fit(); addEventListener('resize',fit,{passive:true});
 
-/*──────────────────────────────────────────────────────────────────────────────
-  1) Deterministic PRNG (sfc32×2) with 128-bit seed
-──────────────────────────────────────────────────────────────────────────────*/
-function sfc32fromHex(h){
-  let a=parseInt(h.slice(0,8),16)>>>0,
-      b=parseInt(h.slice(8,16),16)>>>0,
-      c=parseInt(h.slice(16,24),16)>>>0,
-      d=parseInt(h.slice(24,32),16)>>>0;
-  return function(){ a|=0;b|=0;c|=0;d|=0; let t=(a+b|0)+d|0; d=d+1|0; a=b^b>>>9; b=c+(c<<3)|0; c=c<<21|c>>>11; c=c+t|0; return (t>>>0)/4294967296; };
+/* deterministic PRNG */
+function sfc32(a,b,c,d){return function(){a|=0;b|=0;c|=0;d|=0;var t=(a+b|0)+d|0;d=d+1|0;a=b^b>>>9;b=c+(c<<3)|0;c=c<<21|c>>>11;c=c+t|0;return (t>>>0)/4294967296}}
+function hash128(str){
+ let h1=1779033703,h2=3144134277,h3=1013904242,h4=2773480762;
+ for(let i=0;i<str.length;i++){
+   let k=str.charCodeAt(i);
+   h1=h2+h1^(k); h2=h3+h2^(k); h3=h4+h3^(k); h4=h1+h4^(k);
+ }
+ h1|=0; h2|=0; h3|=0; h4|=0;
+ return [h1>>>0,h2>>>0,h3>>>0,h4>>>0];
 }
-function strToHex128(s){
-  let h1=2166136261>>>0, h2=0x9e3779b1>>>0, h3=0x85ebca6b>>>0, h4=0xc2b2ae35>>>0;
-  for(let i=0;i<s.length;i++){ const x=s.charCodeAt(i);
-    h1^=x; h1=(h1+((h1<<1)+(h1<<4)+(h1<<7)+(h1<<8)+(h1<<24)))>>>0;
-    h2^=x; h2=(h2+((h2<<6)+(h2<<16)-(h2>>>11)))>>>0;
-    h3^=x; h3=(h3*0x27d4eb2d>>>0); h3=(h3^(h3>>>15))>>>0;
-    h4^=x; h4=(h4+((h4<<5)^(h4>>>2)))>>>0;
+const seedStr=(window.tokenData && window.tokenData.hash)|| (location.hash.slice(1)||'pixel');
+const [a,b,c,d]=hash128(seedStr);
+const PRNG=sfc32(a,b,c,d);
+function rand(){return PRNG();}
+function randRange(min,max){return min+(max-min)*rand();}
+
+/* sector management */
+const SECTOR=256;
+const viewRange=1; // 3x3 grid
+const sectors=new Map();
+function sectorKey(x,z){return x+','+z;}
+function getSector(ix,iz){
+  const k=sectorKey(ix,iz);
+  if(sectors.has(k)) return sectors.get(k);
+  // deterministically fill stars
+  const h=sfc32(ix*1664525,iz*1013904223,ix*374761393,iz*668265263);
+  const starCount=10+Math.floor(h()*20);
+  const stars=[];
+  for(let i=0;i<starCount;i++){
+    const sx=(h()*SECTOR);
+    const sy=(h()*SECTOR);
+    const sz=(h()*SECTOR);
+    const cls=h(); // spectral
+    let color='#fff';
+    if(cls<0.7) color='#fff';
+    else if(cls<0.85) color='#ff9';
+    else if(cls<0.95) color='#9cf';
+    else color='#f99';
+    stars.push({x:sx,y:sy,z:sz,color,alpha:0});
   }
-  function to8(n){ return ('00000000'+(n>>>0).toString(16)).slice(-8) }
-  return to8(h1)+to8(h2)+to8(h3)+to8(h4);
-}
-class Random{
-  constructor(uint128Hex){
-    const h = /^[0-9a-f]{32}$/i.test(uint128Hex) ? uint128Hex : strToHex128(uint128Hex);
-    this.useA=false;
-    this.a=sfc32fromHex(h); this.b=sfc32fromHex(h.slice(8)+h.slice(0,8));
-    for(let i=0;i<1e6;i+=2){ this.a(); this.b(); }
-  }
-  dec(){ this.useA=!this.useA; return this.useA?this.a():this.b(); }
-  num(a,b){ return a + (b-a) * this.dec(); }
-  int(a,b){ return a + Math.floor(this.num(0,(b-a+1))); }
-  bool(p){ return this.dec() < p; }
-  choice(list){ return list[this.int(0,list.length-1)] }
-  // stable hash for integer triples
-  h3(ix,iy,iz){
-    // mix ints → 32-bit unsigned, then normalise to [0,1)
-    let n = (ix*374761393) ^ (iy*668265263) ^ (iz*2147483647);
-    n = (n ^ (n>>>13)) >>>0; n = (n*1274126177)>>>0;
-    return n / 4294967296;
-  }
-}
-const QS = (()=>{ const s=(location.search||'')+(location.hash?('&'+location.hash.slice(1)):'');
-  return new URLSearchParams(s);
-})();
-const seedHex = (window.tokenData && window.tokenData.hash ? String(window.tokenData.hash).replace(/^0x/,'') :
-                (QS.get('seed') || QS.get('hash') || 'SearchForLife•ZeroUnbound•v10•infinite'));
-const R = new Random(seedHex);
-
-/*──────────────────────────────────────────────────────────────────────────────
-  2) Math helpers
-──────────────────────────────────────────────────────────────────────────────*/
-const PI=Math.PI, TAU=Math.PI*2;
-const clamp=(x,a,b)=>x<a?a:(x>b?b:x), mix=(a,b,t)=>a+(b-a)*t;
-const len=(v)=>Math.hypot(v[0],v[1],v[2]);
-const norm=(v)=>{ const l=len(v)||1; return [v[0]/l,v[1]/l,v[2]/l]; };
-const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
-const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
-const mul=(v,s)=>[v[0]*s,v[1]*s,v[2]*s];
-const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
-
-function quatFromEuler(yaw,pitch,roll){
-  const cy=Math.cos(yaw*0.5), sy=Math.sin(yaw*0.5);
-  const cp=Math.cos(pitch*0.5), sp=Math.sin(pitch*0.5);
-  const cr=Math.cos(roll*0.5), sr=Math.sin(roll*0.5);
-  return [
-    sr*cp*cy - cr*sp*sy, // x
-    cr*sp*cy + sr*cp*sy, // y
-    cr*cp*sy - sr*sp*cy, // z
-    cr*cp*cy + sr*sp*sy  // w
-  ];
-}
-function quatMul(a,b){
-  const ax=a[0], ay=a[1], az=a[2], aw=a[3];
-  const bx=b[0], by=b[1], bz=b[2], bw=b[3];
-  return [
-    aw*bx + ax*bw + ay*bz - az*by,
-    aw*by - ax*bz + ay*bw + az*bx,
-    aw*bz + ax*by - ay*bx + az*bw,
-    aw*bw - ax*bx - ay*by - az*bz
-  ];
-}
-function quatRotate(q, v){
-  const x=q[0], y=q[1], z=q[2], w=q[3];
-  const u=[x,y,z];
-  const s = 2*dot(u,v);
-  return add(add(mul(u, s), mul(v, (w*w - dot(u,u)))), mul(cross(u,v), 2*w));
+  const sec={ix,iz,stars};
+  sectors.set(k,sec);
+  return sec;
 }
 
-function hsl2rgb(h,s,l){
-  h=(h%360+360)%360/360;
-  let r,g,b;
-  if(s===0){ r=g=b=l; } else {
-    const q=l<0.5? l*(1+s): l+s-l*s, p=2*l-q;
-    const tc=t=>{ if(t<0)t+=1; if(t>1)t-=1;
-      if(t<1/6)return p+(q-p)*6*t; if(t<1/2)return q; if(t<2/3)return p+(q-p)*(2/3-t)*6; return p; };
-    r=tc(h+1/3); g=tc(h); b=tc(h-1/3);
-  }
-  return [r,g,b];
-}
-function tempToRGB(temp){
-  // 1000K..40000K approximate, we'll clamp to 3000..12000 typical star temps
-  const T = clamp(temp, 1000, 40000) / 100;
-  let r,g,b;
-  // red
-  if (T <= 66) r = 255;
-  else { r = 329.698727446 * Math.pow(T - 60, -0.1332047592); r = clamp(r,0,255); }
-  // green
-  if (T <= 66) g = 99.4708025861 * Math.log(T) - 161.1195681661;
-  else { g = 288.1221695283 * Math.pow(T - 60, -0.0755148492); }
-  g = clamp(g,0,255);
-  // blue
-  if (T >= 66) b = 255;
-  else if (T <= 19) b = 0;
-  else b = 138.5177312231 * Math.log(T - 10) - 305.0447927307;
-  b = clamp(b,0,255);
-  return [r/255,g/255,b/255];
-}
+/* player state */
+let px=0,py=0,pz=0;
+let yaw=0;
+let vel=0;
+let throttle=0;
+let warp=false;
 
-/*──────────────────────────────────────────────────────────────────────────────
-  3) WebGL2 bootstrap
-──────────────────────────────────────────────────────────────────────────────*/
-function initGL(){
-  gl = glCanvas.getContext('webgl2', { antialias:true, alpha:false, powerPreference:'high-performance' });
-  if(!gl){ alert('WebGL2 not available.'); throw new Error('WebGL2 unavailable'); }
-  gl.enable(gl.DEPTH_TEST);
-  gl.enable(gl.CULL_FACE);
-  gl.clearColor(0,0,0,1);
-}
-
-/* shader helpers */
-function makeShader(type, src){
-  const o = gl.createShader(type);
-  gl.shaderSource(o, src);
-  gl.compileShader(o);
-  if(!gl.getShaderParameter(o, gl.COMPILE_STATUS)){
-    console.error(src);
-    throw new Error(gl.getShaderInfoLog(o)||'shader compile failed');
-  }
-  return o;
-}
-function makeProgram(vs, fs){
-  const p = gl.createProgram();
-  gl.attachShader(p, makeShader(gl.VERTEX_SHADER, vs));
-  gl.attachShader(p, makeShader(gl.FRAGMENT_SHADER, fs));
-  gl.linkProgram(p);
-  if(!gl.getProgramParameter(p, gl.LINK_STATUS)){
-    throw new Error(gl.getProgramInfoLog(p)||'link failed');
-  }
-  return p;
-}
-
-/*──────────────────────────────────────────────────────────────────────────────
-  4) Meshes (icosphere, ring quad)
-──────────────────────────────────────────────────────────────────────────────*/
-function makeIcoSphere(subdiv=3){
-  // Icosahedron base
-  const t=(1+Math.sqrt(5))/2;
-  let v=[
-    [-1, t, 0],[1, t, 0],[-1,-t, 0],[1,-t, 0],
-    [0,-1, t],[0, 1, t],[0,-1,-t],[0, 1,-t],
-    [ t, 0,-1],[ t, 0, 1],[-t, 0,-1],[-t, 0, 1],
-  ].map(norm);
-  let f=[
-    [0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],
-    [1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],
-    [3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],
-    [4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]];
-  const midCache=new Map();
-  function key(a,b){ return a<b ? a+'_'+b : b+'_'+a; }
-  function midpoint(a,b){
-    const k=key(a,b); if(midCache.has(k)) return midCache.get(k);
-    const m=norm([(v[a][0]+v[b][0])*0.5,(v[a][1]+v[b][1])*0.5,(v[a][2]+v[b][2])*0.5]);
-    v.push(m); const idx=v.length-1; midCache.set(k,idx); return idx;
-  }
-  for(let s=0;s<subdiv;s++){
-    const nf=[];
-    for(const [a,b,c] of f){
-      const ab=midpoint(a,b), bc=midpoint(b,c), ca=midpoint(c,a);
-      nf.push([a,ab,ca],[b,bc,ab],[c,ca,bc],[ab,bc,ca]);
-    }
-    f=nf;
-  }
-  const positions=[]; const normals=[];
-  for(const [a,b,c] of f){
-    const va=v[a], vb=v[b], vc=v[c];
-    positions.push(...va,...vb,...vc);
-    normals.push(...va,...vb,...vc);
-  }
-  // return VAO
-  const vao=gl.createVertexArray(); gl.bindVertexArray(vao);
-  const vbo=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,vbo);
-  const vert=new Float32Array(positions);
-  gl.bufferData(gl.ARRAY_BUFFER, vert, gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(0);
-  gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
-  const nbo=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,nbo);
-  const normBuf=new Float32Array(normals);
-  gl.bufferData(gl.ARRAY_BUFFER, normBuf, gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(1);
-  gl.vertexAttribPointer(1,3,gl.FLOAT,false,0,0);
-  gl.bindVertexArray(null);
-  return { vao, count: positions.length/3 };
-}
-
-function makeQuad(){
-  const vao=gl.createVertexArray(); gl.bindVertexArray(vao);
-  const vbo=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,vbo);
-  const verts=new Float32Array([
-    -1,-1,  1,-1,  1,1,
-    -1,-1,  1,1,  -1,1
-  ]);
-  gl.bufferData(gl.ARRAY_BUFFER,verts,gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(0);
-  gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
-  gl.bindVertexArray(null);
-  return {vao, count:6};
-}
-
-/*──────────────────────────────────────────────────────────────────────────────
-  5) Programs
-──────────────────────────────────────────────────────────────────────────────*/
-/* basic lit sphere */
-const VS_SPHERE = `#version 300 es
-layout(location=0) in vec3 aPos;
-layout(location=1) in vec3 aNorm;
-uniform mat4 uP, uV, uM;
-out vec3 vN;
-out vec3 vW;
-void main(){
-  vec4 w = uM * vec4(aPos,1.0);
-  vW = w.xyz;
-  vN = mat3(uM) * aNorm;
-  gl_Position = uP * uV * w;
-}`;
-const FS_SPHERE = `#version 300 es
-precision highp float;
-in vec3 vN;
-in vec3 vW;
-out vec4 frag;
-uniform vec3 uCam;
-uniform vec3 uColor;
-uniform float uGlow;
-uniform float uAlpha;
-void main(){
-  vec3 N = normalize(vN);
-  vec3 L = normalize(vec3(1.0,0.8,0.4));
-  float NoL = max(dot(N,L), 0.0);
-  vec3 base = uColor * (0.25 + 0.75*NoL);
-  float rim = pow(1.0 - max(dot(N, normalize(uCam - vW)), 0.0), 3.0);
-  vec3 c = base + uGlow*rim*uColor;
-  frag = vec4(c,uAlpha);
-}`;
-
-/* emissive star (glow blended in pass order) */
-const FS_STAR = `#version 300 es
-precision highp float;
-in vec3 vN; in vec3 vW;
-out vec4 frag;
-uniform vec3 uCam;
-uniform vec3 uColor;
-uniform float uAlpha;
-void main(){
-  vec3 N = normalize(vN);
-  float fres = pow(1.0 - abs(dot(N, normalize(uCam - vW))), 4.0);
-  vec3 c = uColor * (1.2 + fres*1.5);
-  frag = vec4(c,uAlpha);
-}`;
-
-/* ring (flat in object plane) */
-const VS_RING = `#version 300 es
-layout(location=0) in vec3 aPos;
-uniform mat4 uP,uV,uM;
-void main(){ gl_Position = uP * uV * uM * vec4(aPos,1.0); }`;
-const FS_RING = `#version 300 es
-precision highp float;
-out vec4 frag;
-uniform vec3 uColorA, uColorB;
-uniform float uInner, uOuter;
-uniform float uHueShift;
-in vec2 vUV;
-void main(){
-  // will be set via vertex positions; simple radial gradient
-  frag = vec4(mix(uColorA,uColorB,0.5), .75);
-}`;
-
-/* starfield (instanced points) */
-const VS_STARFIELD = `#version 300 es
-layout(location=0) in vec3 aPos;   // unit sphere directions
-layout(location=1) in vec3 aCol;   // rgb
-uniform mat4 uP, uVR;              // rotation-only view
-uniform float uScale;
-out vec3 vCol;
-void main(){
-  vec3 world = aPos * uScale;
-  vec4 v = uVR * vec4(world, 1.0);
-  gl_Position = uP * v;
-  gl_PointSize = clamp(3.0 / max(0.15, -v.z), 1.0, 6.0);
-  vCol = aCol;
-}`;
-const FS_STARFIELD = `#version 300 es
-precision highp float;
-in vec3 vCol;
-out vec4 frag;
-void main(){
-  float r = length(gl_PointCoord - vec2(0.5));
-  float a = smoothstep(0.55, 0.0, r);
-  frag = vec4(vCol, a);
-}`;
-
-/* full-screen warp overlay */
-const VS_FS = `#version 300 es
-layout(location=0) in vec2 aPos;
-out vec2 vUV;
-void main(){ vUV = aPos*0.5+0.5; gl_Position = vec4(aPos,0.0,1.0); }`;
-const FS_WARP = `#version 300 es
-precision highp float;
-in vec2 vUV; out vec4 frag;
-uniform float uT;         // 0..1 ramp
-uniform vec2  uRes;
-uniform float uStrength;  // scaled by speed
-float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123); }
-float noise(vec2 x){
-  vec2 p=floor(x), f=fract(x);
-  float a=hash(p), b=hash(p+vec2(1,0)), c=hash(p+vec2(0,1)), d=hash(p+vec2(1,1));
-  vec2 u=f*f*(3.0-2.0*f);
-  return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
-}
-void main(){
-  vec2 uv = (vUV - 0.5);
-  float r = length(uv);
-  float ang = atan(uv.y, uv.x);
-  float tunnel = 1.0 / (0.2 + r*8.0);
-  float streak = smoothstep(0.0, 1.0, tunnel) * (0.3 + 0.7*noise(vec2(ang*2.5, uT*60.0)));
-  float ring = smoothstep(0.02, 0.0, abs(r-0.22)) * 0.5;
-  float glow = smoothstep(0.9, 0.0, r) * 0.4;
-  float chroma = 0.5 + 0.5*sin(ang*6.0 + uT*10.0);
-  vec3 col = vec3(0.04,0.1,0.2) + vec3(0.2,0.4,0.9)*streak + vec3(0.9,0.4,0.2)*ring + vec3(0.6,0.9,0.7)*glow*chroma;
-  col *= uStrength;
-  frag = vec4(col, clamp(uStrength, 0.0, 0.95));
-}`;
-
-/*──────────────────────────────────────────────────────────────────────────────
-  6) Buffers for starfield
-──────────────────────────────────────────────────────────────────────────────*/
-function makeStarfield(N=10000, scale=2000){
-  // deterministically scatter in a cube
-  const pos=new Float32Array(N*3);
-  const col=new Float32Array(N*3);
-  for(let i=0;i<N;i++){
-    // use R.dec chained for deterministic set (but not sector-bound)
-    const x=R.num(-1,1), y=R.num(-1,1), z=R.num(-1,1);
-    // Sampling on a shell-ish distribution for aesthetics
-    const n = norm([x,y,z]); const rr = Math.pow(R.dec(), 0.2);
-    pos[i*3+0]=n[0]*rr; pos[i*3+1]=n[1]*rr; pos[i*3+2]=n[2]*rr;
-    const temp = R.num(3000, 12000);
-    const rgb = tempToRGB(temp);
-    // subtle variation and brightness jitter
-    const b = mix(0.6,1.0,R.dec());
-    col[i*3+0]=rgb[0]*b; col[i*3+1]=rgb[1]*b; col[i*3+2]=rgb[2]*b;
-  }
-  const vao=gl.createVertexArray(); gl.bindVertexArray(vao);
-  const pb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,pb);
-  gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
-  const cb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,cb);
-  gl.bufferData(gl.ARRAY_BUFFER,col,gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1,3,gl.FLOAT,false,0,0);
-  gl.bindVertexArray(null);
-  return {vao, count:N, drawCount:N, scale};
-}
-
-/*──────────────────────────────────────────────────────────────────────────────
-  7) Camera & controls
-──────────────────────────────────────────────────────────────────────────────*/
+/* controls */
 const keys=new Set();
-let pointerLocked=false;
-let invertY=false;
-let yaw=0, pitch=0, roll=0;
-let camPos=[0,0,80];
-let vel=[0,0,0];
-let throttle=0;             // 0..1
-let targetThrottle=0;       // set by inputs
-let warp=false;             // FTL engaged
-let landed=false;
-let lives=3;
-let hull=100;
-let shipRadius = 2.5;
-let debugDet=false;         // F3 determinism overlay
+addEventListener('keydown',e=>{keys.add(e.key.toLowerCase()); if(e.key==='h'){hud.hidden=!hud.hidden;}});
+addEventListener('keyup',e=>{keys.delete(e.key.toLowerCase());});
 
-const aMax=80;              // base acceleration
-const aMaxBoost=160;        // with Shift
-const drag=0.02;            // base drag
-const vFTL=600;             // warp threshold speed
-
-glCanvas.addEventListener('click', ()=>{
-  if(!pointerLocked){
-    glCanvas.requestPointerLock();
-  }
-});
-document.addEventListener('pointerlockchange', ()=>{
-  pointerLocked = (document.pointerLockElement === glCanvas);
-  if(pointerLocked) intro.classList.add('hidden'); else intro.classList.remove('hidden');
-});
-addEventListener('mousemove', (e)=>{
-  if(!pointerLocked || landed) return;
-  const sens = 0.0025 * (warp? 0.5: 1);
-  yaw += e.movementX * sens;
-  pitch += (invertY? 1:-1) * e.movementY * sens;
-  pitch = clamp(pitch, -PI*0.48, PI*0.48);
+canvas.addEventListener('click',()=>{canvas.requestPointerLock();});
+addEventListener('pointerlockchange',()=>{});
+addEventListener('mousemove',e=>{
+ if(document.pointerLockElement!==canvas) return;
+ yaw+=e.movementX*0.002;
 });
 
-addEventListener('keydown', (e)=>{
-  if(e.repeat) return;
-  keys.add(e.key.toLowerCase());
-  if(e.key==='i' || e.key==='I'){ invertY=!invertY; toast('Mouse Y ' + (invertY?'inverted':'normal')); }
-  if(e.key==='h' || e.key==='H'){ hud.classList.toggle('hidden'); }
-  if(e.key==='l' || e.key==='L'){ tryLand(); }
-  if(e.key==='x' || e.key==='X'){ if(landed){ landed=false; toast('Taking off'); } }
-  if(e.key==='F3'){ debugDet=!debugDet; toast('Debug '+(debugDet?'ON':'OFF')); }
-});
-addEventListener('keyup', (e)=>{ keys.delete(e.key.toLowerCase()); });
-
-function forward(){ return quatRotate(quatFromEuler(yaw,pitch,roll), [0,0,-1]); }
-function right(){ return quatRotate(quatFromEuler(yaw,pitch,roll), [1,0,0]); }
-function up(){ return quatRotate(quatFromEuler(yaw,pitch,roll), [0,1,0]); }
-
-function updateControls(dt){
-  const accel = keys.has('shift') ? aMaxBoost : aMax;
-  // throttle target from inputs
-  let t = targetThrottle;
-  if(keys.has('w')) t += 0.8*dt;
-  if(keys.has('s')) t -= 0.8*dt;
-  t = clamp(t, 0, 1);
-  targetThrottle = t;
-  throttle = mix(throttle, t, 1-Math.exp(-dt*4));
-
-  // forward acceleration
-  vel = add(vel, mul(forward(), throttle*accel*dt));
-  // strafing
-  const str = aMax*0.6;
-  if(keys.has('a')) vel = add(vel, mul(right(), -str*dt));
-  if(keys.has('d')) vel = add(vel, mul(right(),  str*dt));
-  if(keys.has('q')) vel = add(vel, mul(up(),    -str*dt));
-  if(keys.has('e')) vel = add(vel, mul(up(),     str*dt));
-
-  // drag & brake
-  vel = mul(vel, Math.exp(-drag*dt));
-  if(keys.has('control')) vel = mul(vel, Math.exp(-dt*3));
-
-  // move
-  camPos = add(camPos, mul(vel, dt));
-
-  // warp threshold
-  const speed = len(vel);
-  const newWarp = speed > vFTL;
-  if(newWarp !== warp){ warp=newWarp; toast(warp?'FTL engaged':'Sub‑light'); }
-
-  // roll damping
-  roll *= Math.exp(-dt*2.5);
+/* update loop */
+function step(dt){
+  if(keys.has('w')) throttle=Math.min(1,throttle+dt);
+  if(keys.has('s')) throttle=Math.max(0,throttle-dt);
+  if(keys.has('a')) yaw-=dt;
+  if(keys.has('d')) yaw+=dt;
+  const maxSpeed=warp?200:40;
+  if(keys.has('shift') && throttle>0.8) warp=true;
+  if(keys.has('j')) warp=!warp;
+  vel+=throttle*80*dt;
+  vel*=0.98;
+  if(vel>maxSpeed) vel=maxSpeed;
+  const dx=Math.sin(yaw)*vel*dt;
+  const dz=Math.cos(yaw)*vel*dt;
+  px+=dx; pz+=dz;
 }
 
-/*──────────────────────────────────────────────────────────────────────────────
-  8) Sector streaming & world generation
-──────────────────────────────────────────────────────────────────────────────*/
-const SECTOR = 2500; // cube edge length in world units
-const PREFETCH = 2;  // 2 → load 5×5×5, but active draw uses distance check
-
-const systems = new Map();   // key "x,y,z" → system object
-const stars   = [];          // culled draw list for this frame
-const starClasses = [
-  {c:'O',t:[30000,40000],p:0.00003},
-  {c:'B',t:[10000,30000],p:0.0013},
-  {c:'A',t:[7500,10000],p:0.006},
-  {c:'F',t:[6000,7500],p:0.03},
-  {c:'G',t:[5200,6000],p:0.076},
-  {c:'K',t:[3700,5200],p:0.12},
-  {c:'M',t:[2400,3700],p:0.74}
-];
-function pickStarClass(r){
-  const x=r.dec(); let acc=0;
-  for(const s of starClasses){ acc+=s.p; if(x<acc) return s; }
-  return starClasses[starClasses.length-1];
-}
-
-function sectorOf(p){ return [Math.floor(p[0]/SECTOR), Math.floor(p[1]/SECTOR), Math.floor(p[2]/SECTOR)]; }
-function key3(ix,iy,iz){ return ix+','+iy+','+iz; }
-
-function ensureSectorsAround(cp){
-  const [sx,sy,sz] = sectorOf(cp);
-  for(let x=sx-PREFETCH; x<=sx+PREFETCH; x++){
-    for(let y=sy-PREFETCH; y<=sy+PREFETCH; y++){
-      for(let z=sz-PREFETCH; z<=sz+PREFETCH; z++){
-        const k=key3(x,y,z);
-        if(!systems.has(k)){
-          const sys = makeSystem(x,y,z);
-          systems.set(k, sys);
-        }
-      }
+/* drawing */
+function draw(){
+ ctx.fillStyle='#000';
+ ctx.fillRect(0,0,W,H);
+ const secX=Math.floor(px/SECTOR);
+ const secZ=Math.floor(pz/SECTOR);
+ for(let gx=secX-viewRange; gx<=secX+viewRange; gx++){
+  for(let gz=secZ-viewRange; gz<=secZ+viewRange; gz++){
+    const sec=getSector(gx,gz);
+    for(const star of sec.stars){
+      const sx=gx*SECTOR+star.x;
+      const sz=gz*SECTOR+star.z;
+      const dx=sx-px;
+      const dz=sz-pz;
+      const rx=Math.cos(-yaw)*dx - Math.sin(-yaw)*dz;
+      const rz=Math.sin(-yaw)*dx + Math.cos(-yaw)*dz;
+      if(rz<=0) continue;
+      const scale=80/rz;
+      const x=W/2 + rx*scale;
+      const y=H/2 - star.y*scale;
+      if(x<0||x>=W||y<0||y>=H) continue;
+      star.alpha=Math.min(1,star.alpha+0.05);
+      ctx.fillStyle=star.color;
+      ctx.globalAlpha=star.alpha;
+      ctx.fillRect(Math.floor(x),Math.floor(y),1,1);
+      ctx.globalAlpha=1;
     }
   }
-  // hysteresis pruning with fade
-  for(const [k,sys] of systems){
-    const dx=sys.center[0]-cp[0], dy=sys.center[1]-cp[1], dz=sys.center[2]-cp[2];
-    const d=Math.hypot(dx,dy,dz);
-    if(d>SECTOR*(PREFETCH+1.4)) sys.fadeOut=true;
-    if(d<SECTOR*(PREFETCH+1.1)) sys.fadeOut=false;
-  }
+ }
+ if(warp){
+   ctx.fillStyle='rgba(0,128,255,0.2)';
+   for(let i=0;i<50;i++){
+     const ang=Math.random()*Math.PI*2;
+     const len=randRange(10,40);
+     const x=W/2+Math.cos(ang)*len;
+     const y=H/2+Math.sin(ang)*len;
+     ctx.fillRect(x,y,1,1);
+   }
+ }
+ hud.textContent=`pos ${px.toFixed(1)},${pz.toFixed(1)}\nvel ${vel.toFixed(1)} yaw ${yaw.toFixed(2)}\nthr ${(throttle*100)|0}% warp ${warp?'on':'off'}`;
 }
 
-function makeSystem(ix,iy,iz){
-  // Each sector may or may not contain a star system; density controlled by RNG
-  const base = [ix*SECTOR + SECTOR*0.5, iy*SECTOR + SECTOR*0.5, iz*SECTOR + SECTOR*0.5];
-  // re-seed using hash of coords for determinism
-  const h = R.h3(ix,iy,iz);
-  const localR = new Random( ('00000000'+Math.floor(h*2**32).toString(16)).slice(-32) );
-  const hasSystem = localR.dec() < 0.28; // ~28% sectors contain a system
-  const sys = { center: base, bodies: [], hasSystem, seed:h, fade:0, fadeOut:false };
-  if(!hasSystem) return sys;
-
-  // create 1 star
-  const sc = pickStarClass(localR);
-  const starTemp = localR.num(sc.t[0], sc.t[1]);
-  const starColor = tempToRGB(starTemp);
-  const starRadius = localR.num(60, 140); // biggish
-  const star = { type:'star', cls:sc.c, temp:starTemp, color: starColor, radius: starRadius, pos: base, rot: localR.num(0,TAU), fadeOffset:localR.dec()*0.5 };
-  sys.bodies.push(star);
-
-  // planets (0..7), slow orbits with large radii
-  const planetCount = localR.int(1, 6);
-  let orbitR = starRadius * localR.num(6, 10);
-  for(let i=0;i<planetCount;i++){
-    const isGas = localR.dec() < 0.4;
-    const size = isGas ? localR.num(8,20) : localR.num(3,10);
-    const hue = localR.num(0,360);
-    const color = hsl2rgb(hue, localR.num(0.4,0.8), localR.num(0.35,0.6));
-
-    const tilt = localR.num(-0.5,0.5);
-    const ring = (!isGas && localR.dec()<0.2) || (isGas && localR.dec()<0.5);
-    const ringHue = hue + localR.num(-40,40);
-
-    const speed = 0.00002 / Math.sqrt(orbitR); // very slow
-    const phase = localR.num(0,TAU);
-    const orbitNormal = norm([localR.num(-1,1), localR.num(-1,1), localR.num(-1,1)]);
-
-      const planet = { type:'planet', size, color, tilt, ring, ringHue, ringInner:size*1.4, ringOuter:size*1.9,
-                       orbitR, orbitSpeed:speed, orbitPhase:phase, orbitN:orbitNormal, pos:[base[0]+orbitR, base[1], base[2]], fadeOffset:localR.dec()*0.5 };
-    sys.bodies.push(planet);
-
-    // maybe moons
-    if(localR.dec()<0.7){
-      const moons = localR.int(0, 3);
-      planet.moons = [];
-      let mR = size * 2.2;
-        for(let m=0;m<moons;m++){
-          const msize = localR.num(0.6, size*0.45);
-          const mhue = hue + localR.num(-80,80);
-          const mcol = hsl2rgb(mhue, 0.35, 0.55);
-          const mspeed = 0.0004 / Math.sqrt(mR);
-          planet.moons.push({ size: msize, color: mcol, orbR: mR, orbSpeed: mspeed, phase: localR.num(0,TAU), fadeOffset:localR.dec()*0.5 });
-          mR += msize * localR.num(2.0,3.5);
-        }
-    }
-
-    orbitR += size*localR.num(20, 45);
-  }
-
-  // asteroids / debris ring random
-  if(localR.dec()<0.5){
-    const beltR = starRadius*localR.num(14, 22);
-    const count = localR.int(120, 300);
-      const rocks = [];
-      for(let i=0;i<count;i++){
-        const ang = localR.num(0,TAU);
-        const rr = beltR * (1+localR.num(-0.07,0.07));
-        const yj = localR.num(-4.0,4.0);
-        const size = localR.num(0.2, 1.2);
-        const color = [0.45+localR.num(-0.1,0.1), 0.42+localR.num(-0.1,0.1), 0.4+localR.num(-0.1,0.1)];
-        rocks.push({ang, rr, yj, size, color, speed: localR.num(0.0002, 0.00045), fadeOffset:localR.dec()*0.5});
-      }
-      sys.rocks = { beltR, rocks };
-  }
-
-  return sys;
+let last=performance.now();
+function loop(now){
+ const dt=(now-last)/1000;
+ last=now;
+ step(dt);
+ draw();
+ requestAnimationFrame(loop);
 }
-
-/*──────────────────────────────────────────────────────────────────────────────
-  9) Matrices
-──────────────────────────────────────────────────────────────────────────────*/
-function mat4Identity(){ return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; }
-function mat4Mul(a,b){
-  const r=new Array(16).fill(0);
-  for(let row=0;row<4;row++){
-    for(let col=0;col<4;col++){
-      r[col+row*4] = a[row*4+0]*b[col+0] + a[row*4+1]*b[col+4] + a[row*4+2]*b[col+8] + a[row*4+3]*b[col+12];
-    }
-  }
-  return r;
-}
-function mat4Translate(m, v){
-  const t=[1,0,0,0, 0,1,0,0, 0,0,1,0, v[0],v[1],v[2],1];
-  return mat4Mul(m,t);
-}
-function mat4Scale(m, s){
-  const sm=[s,0,0,0, 0,s,0,0, 0,0,s,0, 0,0,0,1];
-  return mat4Mul(m,sm);
-}
-function mat4FromQuatPos(q, p){
-  const x=q[0], y=q[1], z=q[2], w=q[3];
-  const x2=x+x, y2=y+y, z2=z+z;
-  const xx=x*x2, xy=x*y2, xz=x*z2;
-  const yy=y*y2, yz=y*z2, zz=z*z2;
-  const wx=w*x2, wy=w*y2, wz=w*z2;
-  return [
-    1-(yy+zz), xy+wz,     xz-wy,     0,
-    xy-wz,     1-(xx+zz), yz+wx,     0,
-    xz+wy,     yz-wx,     1-(xx+yy), 0,
-    p[0],      p[1],      p[2],      1
-  ];
-}
-function mat4Perspective(fovy, aspect, near, far){
-  const f=1/Math.tan(fovy/2), nf=1/(near-far);
-  return [f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,(2*far*near)*nf,0];
-}
-
-/*──────────────────────────────────────────────────────────────────────────────
-  10) Scene objects & rendering
-──────────────────────────────────────────────────────────────────────────────*/
-let progSphere, progStar, progStarfield, progFS;
-let sphere, quad, starfield;
-let projection, view;
-let renderScale = 1.0; // dynamic for FPS
-
-function initScene(){
-  initGL();
-  // programs
-  progSphere = makeProgram(VS_SPHERE, FS_SPHERE);
-  progStar   = makeProgram(VS_SPHERE, FS_STAR);
-  progStarfield = makeProgram(VS_STARFIELD, FS_STARFIELD);
-  progFS = makeProgram(VS_FS, FS_WARP);
-  sphere = makeIcoSphere(3);
-  quad   = makeQuad();
-  starfield = makeStarfield(8000, 4000);
-}
-
-function setCommonMatrices(){
-  const aspect = (W/renderScale) / (H/renderScale);
-  projection = mat4Perspective(PI/3, aspect, 0.1, 100000.0);
-  // view from yaw/pitch/roll & camPos
-  const q = quatFromEuler(yaw,pitch,roll);
-  const f = forward(), r=right(), u=up();
-  // construct inverse rotation/translation
-  view=[
-    r[0], u[0], -f[0], 0,
-    r[1], u[1], -f[1], 0,
-    r[2], u[2], -f[2], 0,
-    -dot(r,camPos), -dot(u,camPos), dot(f,camPos), 1
-  ];
-}
-
-function drawStarfield(){
-  gl.useProgram(progStarfield);
-  const uP=gl.getUniformLocation(progStarfield,'uP');
-  const uVR=gl.getUniformLocation(progStarfield,'uVR');
-  const uScale=gl.getUniformLocation(progStarfield,'uScale');
-  gl.uniformMatrix4fv(uP,false,new Float32Array(projection));
-  const viewRot=view.slice(); viewRot[12]=viewRot[13]=viewRot[14]=0;
-  gl.uniformMatrix4fv(uVR,false,new Float32Array(viewRot));
-  gl.uniform1f(uScale, starfield.scale);
-  gl.bindVertexArray(starfield.vao);
-  gl.drawArrays(gl.POINTS,0,starfield.drawCount);
-  gl.bindVertexArray(null);
-}
-
-function modelMatrix(pos, scaleVal){
-  let m=mat4Identity();
-  m=mat4Translate(m,pos);
-  m=mat4Scale(m,scaleVal);
-  return m;
-}
-
-function drawSphere(pos, radius, color, glow, useStar=false, alpha=1.0){
-  const p = useStar? progStar : progSphere;
-  gl.useProgram(p);
-  const uP=gl.getUniformLocation(p,'uP');
-  const uV=gl.getUniformLocation(p,'uV');
-  const uM=gl.getUniformLocation(p,'uM');
-  const uCam=gl.getUniformLocation(p,'uCam');
-  const uColor=gl.getUniformLocation(p,'uColor');
-  const uGlow=gl.getUniformLocation(p,'uGlow');
-  const uAlpha=gl.getUniformLocation(p,'uAlpha');
-  gl.uniformMatrix4fv(uP,false,new Float32Array(projection));
-  gl.uniformMatrix4fv(uV,false,new Float32Array(view));
-  const m=modelMatrix(pos, radius);
-  gl.uniformMatrix4fv(uM,false,new Float32Array(m));
-  gl.uniform3fv(uCam,new Float32Array(camPos));
-  gl.uniform3fv(uColor,new Float32Array(color));
-  if(!useStar) gl.uniform1f(uGlow, glow||0.0);
-  gl.uniform1f(uAlpha, alpha);
-  if(alpha<1.0 || useStar){
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, useStar? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
-  } else {
-    gl.disable(gl.BLEND);
-  }
-  gl.bindVertexArray(sphere.vao);
-  gl.drawArrays(gl.TRIANGLES,0,sphere.count);
-  gl.bindVertexArray(null);
-  if(alpha<1.0 || useStar){ gl.disable(gl.BLEND); }
-}
-
-function drawSystem(sys, t, fade){
-  if(!sys.hasSystem) return;
-  const star = sys.bodies[0];
-  const sA = clamp(fade - (star.fadeOffset||0),0,1);
-  drawSphere(star.pos, star.radius, star.color, 0.0, true, sA);
-
-  for(let i=1;i<sys.bodies.length;i++){
-    const p = sys.bodies[i];
-    if(p.type!=='planet') continue;
-    const n = p.orbitN;
-    const a = Math.abs(n[0])<0.99? [1,0,0] : [0,1,0];
-    const b = norm(cross(n,a));
-    const c = norm(cross(n,b));
-    const ang = p.orbitPhase + t*p.orbitSpeed*60000.0;
-    const pos = add(sys.center, add( mul(b, Math.cos(ang)*p.orbitR), mul(c, Math.sin(ang)*p.orbitR) ));
-    p.pos = pos;
-    const alpha = clamp(fade - (p.fadeOffset||0),0,1);
-    drawSphere(pos, p.size, p.color, 0.35, false, alpha);
-
-    if(p.ring){
-      const inner = p.ringInner, outer=p.ringOuter;
-      const colA=hsl2rgb(p.ringHue,0.7,0.55);
-      gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-      drawSphere(pos, outer, [colA[0]*0.6,colA[1]*0.6,colA[2]*0.6], 0.08, false, alpha*0.6);
-      gl.disable(gl.BLEND);
-    }
-
-    if(p.moons){
-      for(const m of p.moons){
-        const angm = m.phase + t*m.orbSpeed*60000.0;
-        const mp = add(pos, [Math.cos(angm)*m.orbR, Math.sin(angm)*m.orbR*0.2, 0]);
-        const ma = clamp(fade - (m.fadeOffset||0),0,1);
-        drawSphere(mp, m.size, m.color, 0.2, false, ma);
-      }
-    }
-  }
-
-  if(sys.rocks){
-    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    for(const r of sys.rocks.rocks){
-      const ang = r.ang + r.speed*t*60000.0;
-      const p = [sys.center[0] + Math.cos(ang)*r.rr, sys.center[1] + r.yj, sys.center[2] + Math.sin(ang)*r.rr];
-      const ra = clamp(fade - (r.fadeOffset||0),0,1);
-      drawSphere(p, r.size, r.color, 0.0, false, ra);
-    }
-    gl.disable(gl.BLEND);
-  }
-}
-
-/*──────────────────────────────────────────────────────────────────────────────
-  11) Collisions & landing
-──────────────────────────────────────────────────────────────────────────────*/
-let lastDeath=0;
-function collideAndHeat(t){
-  // Check against nearby star kill radius and planets/rocks hull bumps
-  for(const sys of systems.values()){
-    if(!sys.hasSystem) continue;
-    const star=sys.bodies[0];
-    const d= Math.hypot(camPos[0]-star.pos[0], camPos[1]-star.pos[1], camPos[2]-star.pos[2]);
-    const heatR = star.radius*1.1;
-    const killR = star.radius*0.95;
-    if(d < heatR){
-      const heat = clamp((heatR - d)/heatR, 0, 1);
-      hull -= heat * 8 * dt; // burn
-      if(d < killR) hull-= 60*dt; // severe
-    }
-    // planets bumps
-    for(let i=1;i<sys.bodies.length;i++){
-      const p = sys.bodies[i]; if(p.type!=='planet') continue;
-      const dist=Math.hypot(camPos[0]-p.pos[0],camPos[1]-p.pos[1],camPos[2]-p.pos[2]);
-      if(dist < p.size + shipRadius){
-        hull -= 30*dt;
-        // push away
-        const dir = norm(sub(camPos, p.pos));
-        camPos = add(p.pos, mul(dir, p.size + shipRadius + 1));
-        vel = mul(dir, 10);
-        toast('Hull impact!');
-      }
-      if(p.moons){
-        for(const m of p.moons){
-          const mpDist = Math.hypot(camPos[0]-(p.pos[0]+Math.cos(m.phase)*m.orbR),
-                                    camPos[1]-(p.pos[1]+Math.sin(m.phase)*m.orbR*0.2),
-                                    camPos[2]-p.pos[2]);
-          if(mpDist < m.size + shipRadius){
-            hull -= 15*dt; toast('Debris strike');
-          }
-        }
-      }
-    }
-  }
-  if(hull<=0 && performance.now()-lastDeath>1000){
-    lives--; hull=100; vel=[0,0,0]; warp=false;
-    camPos = add(camPos, mul(forward(), -100));
-    lastDeath=performance.now();
-    toast('You died. Lives left: '+lives);
-  }
-}
-
-function tryLand(){
-  // land if near a planet surface (within 1.1x radius)
-  for(const sys of systems.values()){
-    if(!sys.hasSystem) continue;
-    for(let i=1;i<sys.bodies.length;i++){
-      const p=sys.bodies[i]; if(p.type!=='planet') continue;
-      const d=Math.hypot(camPos[0]-p.pos[0],camPos[1]-p.pos[1],camPos[2]-p.pos[2]);
-      if(d < p.size*1.15 + shipRadius){
-        landed=true; vel=[0,0,0]; throttle=0; targetThrottle=0;
-        camPos = add(p.pos, mul(norm(sub(camPos,p.pos)), p.size + 2.2));
-        toast('Landed (low orbit hold). Take off: X');
-        return;
-      }
-    }
-  }
-  toast('No landing target in range.');
-}
-
-/*──────────────────────────────────────────────────────────────────────────────
-  12) Warp overlay & dynamic resolution
-──────────────────────────────────────────────────────────────────────────────*/
-const fpsGraph = framegraph.getContext('2d');
-let fps=60, avgFps=60, lastT=performance.now(), acc=0, accN=0, dt=0;
-let warpVis=0;
-
-function updateFPS(t){
-  const now=t; dt=Math.max(0.0001, (now-lastT)/1000); lastT=now;
-  const inst=1/dt; acc+=inst; accN++; if(accN>=15){ fps=acc/accN; acc=0; accN=0; avgFps = avgFps*0.7 + fps*0.3; }
-  // dynamic resolution
-  if(avgFps<28 && renderScale>0.6){ renderScale = Math.max(0.6, renderScale-0.05); }
-  else if(avgFps>56 && renderScale<1.0){ renderScale = Math.min(1.0, renderScale+0.05); }
-  // starfield quality ladder
-  if(starfield){
-    if(avgFps<30 && starfield.drawCount>2000){ starfield.drawCount = Math.max(2000, starfield.drawCount-500); }
-    else if(avgFps>50 && starfield.drawCount<starfield.count){ starfield.drawCount = Math.min(starfield.count, starfield.drawCount+500); }
-  }
-}
-
-function drawFramegraph(){
-  const g=fpsGraph;
-  g.clearRect(0,0,240,60);
-  g.fillStyle='rgba(0,0,0,.35)'; g.fillRect(0,0,240,60);
-  g.fillStyle='#0cf'; g.fillRect(0,60-avgFps, 240, 2);
-  g.fillStyle='#9cf'; g.fillText('FPS '+fps.toFixed(1)+' (avg '+avgFps.toFixed(1)+')', 6, 12);
-  g.fillText('Scale '+renderScale.toFixed(2), 6, 26);
-}
-
-function drawWarpOverlay(tn){
-  warpVis = mix(warpVis, warp ? clamp(Math.pow(throttle,1.5),0,1) : 0, 1-Math.exp(-dt*4));
-  if(warpVis<0.01) return;
-  gl.disable(gl.DEPTH_TEST);
-  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-  gl.useProgram(progFS);
-  gl.uniform1f(gl.getUniformLocation(progFS,'uT'), tn*0.1);
-  gl.uniform2f(gl.getUniformLocation(progFS,'uRes'), W/renderScale, H/renderScale);
-  gl.uniform1f(gl.getUniformLocation(progFS,'uStrength'), warpVis);
-  gl.bindVertexArray(quad.vao);
-  gl.drawArrays(gl.TRIANGLES,0,quad.count);
-  gl.bindVertexArray(null);
-  gl.disable(gl.BLEND);
-  gl.enable(gl.DEPTH_TEST);
-}
-
-/*──────────────────────────────────────────────────────────────────────────────
-  13) HUD & messaging
-──────────────────────────────────────────────────────────────────────────────*/
-function toast(text){
-  msg.textContent = text;
-  msg.style.opacity = '1';
-  const t = performance.now();
-  const id = t;
-  setTimeout(()=>{
-    if(id===t){
-      msg.style.transition='opacity .6s ease';
-      msg.style.opacity='0';
-      setTimeout(()=>{ msg.style.transition=''; }, 700);
-    }
-  }, 1600);
-}
-
-function updateHUD(t){
-  const sec = sectorOf(camPos);
-  const base = [
-    'ZeroUnbound — Search for Life v10',
-    `Seed: 0x${seedHex}`,
-    `FPS: ${fps.toFixed(1)}  tierΔ renderScale:${renderScale.toFixed(2)}`,
-    `Pos: ${camPos.map(v=>v.toFixed(1)).join(', ')}  Sec:${sec.join(',')} |v|:${len(vel).toFixed(2)}`,
-    `Throttle:${(throttle*100).toFixed(0)}%  FTL:${warp?'ON':'OFF'}  Lives:${lives}  Hull:${hull.toFixed(0)}%`,
-    'Keys: WASD/QE move  Shift boost  Ctrl brake  L land  X takeoff  I invertY  H HUD  F framegraph'
-  ];
-  if(debugDet){
-    const js = JSON.stringify(makeSystem(sec[0],sec[1],sec[2]));
-    const h = strToHex128(js).slice(0,8);
-    base.push(`Dbg sector hash:${h}`);
-  }
-  const s = base.join('\\n');
-  hud.textContent = s;
-}
-
-/*──────────────────────────────────────────────────────────────────────────────
-  14) Main loop
-──────────────────────────────────────────────────────────────────────────────*/
-function render(t){
-  updateFPS(t);
-  setCommonMatrices();
-  ensureSectorsAround(camPos);
-  gl.viewport(0,0, W*renderScale|0, H*renderScale|0);
-  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-
-  // starfield
-  drawStarfield();
-
-  // draw nearby systems with fade and LRU
-  for(const [k,sys] of systems){
-    sys.fade += (sys.fadeOut? -dt : dt);
-    sys.fade = clamp(sys.fade,0,1);
-    if(sys.fade<=0 && sys.fadeOut){ systems.delete(k); continue; }
-    const d = Math.hypot(camPos[0]-sys.center[0], camPos[1]-sys.center[1], camPos[2]-sys.center[2]);
-    if(d < SECTOR*1.5 && sys.fade>0.01) drawSystem(sys, t*0.001, sys.fade);
-  }
-
-  // overlay warp
-  drawWarpOverlay(t*0.001);
-
-  // collisions & heat
-  collideAndHeat(t);
-
-  // update HUD & framegraph
-  if(!hud.classList.contains('hidden')) updateHUD(t);
-  drawFramegraph();
-
-  // update controls after draw
-  if(!landed) updateControls(dt);
-
-  requestAnimationFrame(render);
-}
-
-/*──────────────────────────────────────────────────────────────────────────────
-  Bootstrap
-──────────────────────────────────────────────────────────────────────────────*/
-initScene();
-updateHUD(0);
-requestAnimationFrame(render);
-
+requestAnimationFrame(loop);
+})();
 </script>
 </body>
 </html>
