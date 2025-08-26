@@ -44,7 +44,7 @@
 <canvas id="gl"></canvas>
 <canvas id="framegraph"></canvas>
 <div id="reticle" aria-hidden="true"></div>
-<pre id="intro">Click to enter — <b>WASD/QE</b> move • <b>Shift</b> accel • <b>Ctrl</b> brake • <b>J</b> warp • <b>L</b> land • <b>X</b> take off • <b>I</b> invert mouse‑Y • <b>H</b> HUD
+<pre id="intro">Click to enter — <b>WASD/QE</b> move • <b>Shift</b> boost • <b>Ctrl</b> brake • <b>L</b> land • <b>X</b> take off • <b>I</b> invert mouse‑Y • <b>H</b> HUD
 </pre>
 <pre id="hud" class="hidden"></pre>
 <pre id="msg"></pre>
@@ -334,15 +334,15 @@ out vec4 frag;
 uniform vec3 uCam;
 uniform vec3 uColor;
 uniform float uGlow;
+uniform float uAlpha;
 void main(){
   vec3 N = normalize(vN);
   vec3 L = normalize(vec3(1.0,0.8,0.4));
   float NoL = max(dot(N,L), 0.0);
   vec3 base = uColor * (0.25 + 0.75*NoL);
-  // rim
   float rim = pow(1.0 - max(dot(N, normalize(uCam - vW)), 0.0), 3.0);
   vec3 c = base + uGlow*rim*uColor;
-  frag = vec4(c,1.0);
+  frag = vec4(c,uAlpha);
 }`;
 
 /* emissive star (glow blended in pass order) */
@@ -352,11 +352,12 @@ in vec3 vN; in vec3 vW;
 out vec4 frag;
 uniform vec3 uCam;
 uniform vec3 uColor;
+uniform float uAlpha;
 void main(){
   vec3 N = normalize(vN);
   float fres = pow(1.0 - abs(dot(N, normalize(uCam - vW))), 4.0);
   vec3 c = uColor * (1.2 + fres*1.5);
-  frag = vec4(c,1.0);
+  frag = vec4(c,uAlpha);
 }`;
 
 /* ring (flat in object plane) */
@@ -480,6 +481,12 @@ let landed=false;
 let lives=3;
 let hull=100;
 let shipRadius = 2.5;
+let debugDet=false;         // F3 determinism overlay
+
+const aMax=80;              // base acceleration
+const aMaxBoost=160;        // with Shift
+const drag=0.02;            // base drag
+const vFTL=600;             // warp threshold speed
 
 glCanvas.addEventListener('click', ()=>{
   if(!pointerLocked){
@@ -503,9 +510,9 @@ addEventListener('keydown', (e)=>{
   keys.add(e.key.toLowerCase());
   if(e.key==='i' || e.key==='I'){ invertY=!invertY; toast('Mouse Y ' + (invertY?'inverted':'normal')); }
   if(e.key==='h' || e.key==='H'){ hud.classList.toggle('hidden'); }
-  if(e.key==='j' || e.key==='J'){ warp=!warp; toast(warp?'Warp engaged':'Warp offline'); }
   if(e.key==='l' || e.key==='L'){ tryLand(); }
   if(e.key==='x' || e.key==='X'){ if(landed){ landed=false; toast('Taking off'); } }
+  if(e.key==='F3'){ debugDet=!debugDet; toast('Debug '+(debugDet?'ON':'OFF')); }
 });
 addEventListener('keyup', (e)=>{ keys.delete(e.key.toLowerCase()); });
 
@@ -514,34 +521,35 @@ function right(){ return quatRotate(quatFromEuler(yaw,pitch,roll), [1,0,0]); }
 function up(){ return quatRotate(quatFromEuler(yaw,pitch,roll), [0,1,0]); }
 
 function updateControls(dt){
-  const acc= warp? 400 : 80;
-  const boost = keys.has('shift') ? 2.0 : 1.0;
-  const brake = keys.has('control') ? 0.6 : 1.0;
+  const accel = keys.has('shift') ? aMaxBoost : aMax;
   // throttle target from inputs
   let t = targetThrottle;
-  if(keys.has('w')) t += 0.8*dt*boost;
+  if(keys.has('w')) t += 0.8*dt;
   if(keys.has('s')) t -= 0.8*dt;
   t = clamp(t, 0, 1);
   targetThrottle = t;
-  // damp throttle
   throttle = mix(throttle, t, 1-Math.exp(-dt*4));
 
-  // base speed curve: cubic to give fine control at low speeds
-  const speed = (warp? 1500 : 250) * Math.pow(throttle, 3) * boost * brake;
-  // acceleration towards target forward velocity
-  const dir = forward();
-  const vTarget = mul(dir, speed);
-  // strafe
-  if(keys.has('a')) vel = add(vel, mul(right(), -acc*dt*0.5));
-  if(keys.has('d')) vel = add(vel, mul(right(),  acc*dt*0.5));
-  if(keys.has('q')) vel = add(vel, mul(up(),    -acc*dt*0.5));
-  if(keys.has('e')) vel = add(vel, mul(up(),     acc*dt*0.5));
+  // forward acceleration
+  vel = add(vel, mul(forward(), throttle*accel*dt));
+  // strafing
+  const str = aMax*0.6;
+  if(keys.has('a')) vel = add(vel, mul(right(), -str*dt));
+  if(keys.has('d')) vel = add(vel, mul(right(),  str*dt));
+  if(keys.has('q')) vel = add(vel, mul(up(),    -str*dt));
+  if(keys.has('e')) vel = add(vel, mul(up(),     str*dt));
 
-  // blend current vel toward vTarget
-  vel = add( mul(vel, Math.exp(-dt*2.5)), mul(vTarget, 1 - Math.exp(-dt*2.5)) );
+  // drag & brake
+  vel = mul(vel, Math.exp(-drag*dt));
+  if(keys.has('control')) vel = mul(vel, Math.exp(-dt*3));
 
   // move
   camPos = add(camPos, mul(vel, dt));
+
+  // warp threshold
+  const speed = len(vel);
+  const newWarp = speed > vFTL;
+  if(newWarp !== warp){ warp=newWarp; toast(warp?'FTL engaged':'Sub‑light'); }
 
   // roll damping
   roll *= Math.exp(-dt*2.5);
@@ -555,6 +563,20 @@ const PREFETCH = 2;  // 2 → load 5×5×5, but active draw uses distance check
 
 const systems = new Map();   // key "x,y,z" → system object
 const stars   = [];          // culled draw list for this frame
+const starClasses = [
+  {c:'O',t:[30000,40000],p:0.00003},
+  {c:'B',t:[10000,30000],p:0.0013},
+  {c:'A',t:[7500,10000],p:0.006},
+  {c:'F',t:[6000,7500],p:0.03},
+  {c:'G',t:[5200,6000],p:0.076},
+  {c:'K',t:[3700,5200],p:0.12},
+  {c:'M',t:[2400,3700],p:0.74}
+];
+function pickStarClass(r){
+  const x=r.dec(); let acc=0;
+  for(const s of starClasses){ acc+=s.p; if(x<acc) return s; }
+  return starClasses[starClasses.length-1];
+}
 
 function sectorOf(p){ return [Math.floor(p[0]/SECTOR), Math.floor(p[1]/SECTOR), Math.floor(p[2]/SECTOR)]; }
 function key3(ix,iy,iz){ return ix+','+iy+','+iz; }
@@ -572,12 +594,12 @@ function ensureSectorsAround(cp){
       }
     }
   }
-  // prune far sectors
+  // hysteresis pruning with fade
   for(const [k,sys] of systems){
     const dx=sys.center[0]-cp[0], dy=sys.center[1]-cp[1], dz=sys.center[2]-cp[2];
-    if(Math.hypot(dx,dy,dz) > SECTOR*(PREFETCH+1.6)){
-      systems.delete(k);
-    }
+    const d=Math.hypot(dx,dy,dz);
+    if(d>SECTOR*(PREFETCH+1.4)) sys.fadeOut=true;
+    if(d<SECTOR*(PREFETCH+1.1)) sys.fadeOut=false;
   }
 }
 
@@ -588,14 +610,15 @@ function makeSystem(ix,iy,iz){
   const h = R.h3(ix,iy,iz);
   const localR = new Random( ('00000000'+Math.floor(h*2**32).toString(16)).slice(-32) );
   const hasSystem = localR.dec() < 0.28; // ~28% sectors contain a system
-  const sys = { center: base, bodies: [], hasSystem, seed:h };
+  const sys = { center: base, bodies: [], hasSystem, seed:h, fade:0, fadeOut:false };
   if(!hasSystem) return sys;
 
   // create 1 star
-  const starTemp = localR.num(3500, 10000);
+  const sc = pickStarClass(localR);
+  const starTemp = localR.num(sc.t[0], sc.t[1]);
   const starColor = tempToRGB(starTemp);
   const starRadius = localR.num(60, 140); // biggish
-  const star = { type:'star', color: starColor, radius: starRadius, pos: base, rot: localR.num(0,TAU) };
+  const star = { type:'star', cls:sc.c, temp:starTemp, color: starColor, radius: starRadius, pos: base, rot: localR.num(0,TAU), fadeOffset:localR.dec()*0.5 };
   sys.bodies.push(star);
 
   // planets (0..7), slow orbits with large radii
@@ -615,8 +638,8 @@ function makeSystem(ix,iy,iz){
     const phase = localR.num(0,TAU);
     const orbitNormal = norm([localR.num(-1,1), localR.num(-1,1), localR.num(-1,1)]);
 
-    const planet = { type:'planet', size, color, tilt, ring, ringHue, ringInner:size*1.4, ringOuter:size*1.9,
-                     orbitR, orbitSpeed:speed, orbitPhase:phase, orbitN:orbitNormal, pos:[base[0]+orbitR, base[1], base[2]] };
+      const planet = { type:'planet', size, color, tilt, ring, ringHue, ringInner:size*1.4, ringOuter:size*1.9,
+                       orbitR, orbitSpeed:speed, orbitPhase:phase, orbitN:orbitNormal, pos:[base[0]+orbitR, base[1], base[2]], fadeOffset:localR.dec()*0.5 };
     sys.bodies.push(planet);
 
     // maybe moons
@@ -624,14 +647,14 @@ function makeSystem(ix,iy,iz){
       const moons = localR.int(0, 3);
       planet.moons = [];
       let mR = size * 2.2;
-      for(let m=0;m<moons;m++){
-        const msize = localR.num(0.6, size*0.45);
-        const mhue = hue + localR.num(-80,80);
-        const mcol = hsl2rgb(mhue, 0.35, 0.55);
-        const mspeed = 0.0004 / Math.sqrt(mR);
-        planet.moons.push({ size: msize, color: mcol, orbR: mR, orbSpeed: mspeed, phase: localR.num(0,TAU) });
-        mR += msize * localR.num(2.0,3.5);
-      }
+        for(let m=0;m<moons;m++){
+          const msize = localR.num(0.6, size*0.45);
+          const mhue = hue + localR.num(-80,80);
+          const mcol = hsl2rgb(mhue, 0.35, 0.55);
+          const mspeed = 0.0004 / Math.sqrt(mR);
+          planet.moons.push({ size: msize, color: mcol, orbR: mR, orbSpeed: mspeed, phase: localR.num(0,TAU), fadeOffset:localR.dec()*0.5 });
+          mR += msize * localR.num(2.0,3.5);
+        }
     }
 
     orbitR += size*localR.num(20, 45);
@@ -641,16 +664,16 @@ function makeSystem(ix,iy,iz){
   if(localR.dec()<0.5){
     const beltR = starRadius*localR.num(14, 22);
     const count = localR.int(120, 300);
-    const rocks = [];
-    for(let i=0;i<count;i++){
-      const ang = localR.num(0,TAU);
-      const rr = beltR * (1+localR.num(-0.07,0.07));
-      const yj = localR.num(-4.0,4.0);
-      const size = localR.num(0.2, 1.2);
-      const color = [0.45+localR.num(-0.1,0.1), 0.42+localR.num(-0.1,0.1), 0.4+localR.num(-0.1,0.1)];
-      rocks.push({ang, rr, yj, size, color, speed: localR.num(0.0002, 0.00045)});
-    }
-    sys.rocks = { beltR, rocks };
+      const rocks = [];
+      for(let i=0;i<count;i++){
+        const ang = localR.num(0,TAU);
+        const rr = beltR * (1+localR.num(-0.07,0.07));
+        const yj = localR.num(-4.0,4.0);
+        const size = localR.num(0.2, 1.2);
+        const color = [0.45+localR.num(-0.1,0.1), 0.42+localR.num(-0.1,0.1), 0.4+localR.num(-0.1,0.1)];
+        rocks.push({ang, rr, yj, size, color, speed: localR.num(0.0002, 0.00045), fadeOffset:localR.dec()*0.5});
+      }
+      sys.rocks = { beltR, rocks };
   }
 
   return sys;
@@ -752,7 +775,7 @@ function modelMatrix(pos, scaleVal){
   return m;
 }
 
-function drawSphere(pos, radius, color, glow, useStar=false){
+function drawSphere(pos, radius, color, glow, useStar=false, alpha=1.0){
   const p = useStar? progStar : progSphere;
   gl.useProgram(p);
   const uP=gl.getUniformLocation(p,'uP');
@@ -761,6 +784,7 @@ function drawSphere(pos, radius, color, glow, useStar=false){
   const uCam=gl.getUniformLocation(p,'uCam');
   const uColor=gl.getUniformLocation(p,'uColor');
   const uGlow=gl.getUniformLocation(p,'uGlow');
+  const uAlpha=gl.getUniformLocation(p,'uAlpha');
   gl.uniformMatrix4fv(uP,false,new Float32Array(projection));
   gl.uniformMatrix4fv(uV,false,new Float32Array(view));
   const m=modelMatrix(pos, radius);
@@ -768,58 +792,63 @@ function drawSphere(pos, radius, color, glow, useStar=false){
   gl.uniform3fv(uCam,new Float32Array(camPos));
   gl.uniform3fv(uColor,new Float32Array(color));
   if(!useStar) gl.uniform1f(uGlow, glow||0.0);
+  gl.uniform1f(uAlpha, alpha);
+  if(alpha<1.0 || useStar){
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, useStar? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
+  } else {
+    gl.disable(gl.BLEND);
+  }
   gl.bindVertexArray(sphere.vao);
   gl.drawArrays(gl.TRIANGLES,0,sphere.count);
   gl.bindVertexArray(null);
+  if(alpha<1.0 || useStar){ gl.disable(gl.BLEND); }
 }
 
-function drawSystem(sys, t){
+function drawSystem(sys, t, fade){
   if(!sys.hasSystem) return;
-  // star
-  drawSphere(sys.bodies[0].pos, sys.bodies[0].radius, sys.bodies[0].color, 0.0, true);
+  const star = sys.bodies[0];
+  const sA = clamp(fade - (star.fadeOffset||0),0,1);
+  drawSphere(star.pos, star.radius, star.color, 0.0, true, sA);
 
-  // planets & moons, update positions along orbit
   for(let i=1;i<sys.bodies.length;i++){
     const p = sys.bodies[i];
     if(p.type!=='planet') continue;
-    // orbit plane defined by p.orbitN; compute basis
     const n = p.orbitN;
     const a = Math.abs(n[0])<0.99? [1,0,0] : [0,1,0];
     const b = norm(cross(n,a));
     const c = norm(cross(n,b));
-    const ang = p.orbitPhase + t*p.orbitSpeed*60000.0; // t in seconds
+    const ang = p.orbitPhase + t*p.orbitSpeed*60000.0;
     const pos = add(sys.center, add( mul(b, Math.cos(ang)*p.orbitR), mul(c, Math.sin(ang)*p.orbitR) ));
     p.pos = pos;
+    const alpha = clamp(fade - (p.fadeOffset||0),0,1);
+    drawSphere(pos, p.size, p.color, 0.35, false, alpha);
 
-    drawSphere(pos, p.size, p.color, 0.35, false);
-
-    // ring (simple: draw a larger sphere with alpha lines already in sphere shader – or skip for perf)
     if(p.ring){
-      // approximate with two thin spheres of additive color
       const inner = p.ringInner, outer=p.ringOuter;
       const colA=hsl2rgb(p.ringHue,0.7,0.55);
-      gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-      drawSphere(pos, outer, [colA[0]*0.6,colA[1]*0.6,colA[2]*0.6], 0.08, false);
+      gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      drawSphere(pos, outer, [colA[0]*0.6,colA[1]*0.6,colA[2]*0.6], 0.08, false, alpha*0.6);
       gl.disable(gl.BLEND);
     }
 
-    // moons
     if(p.moons){
       for(const m of p.moons){
         const angm = m.phase + t*m.orbSpeed*60000.0;
-        const mp = add(pos, [Math.cos(angm)*m.orbR, Math.sin(angm)*m.orbR*0.2, 0]); // slight ellipse
-        drawSphere(mp, m.size, m.color, 0.2, false);
+        const mp = add(pos, [Math.cos(angm)*m.orbR, Math.sin(angm)*m.orbR*0.2, 0]);
+        const ma = clamp(fade - (m.fadeOffset||0),0,1);
+        drawSphere(mp, m.size, m.color, 0.2, false, ma);
       }
     }
   }
 
-  // asteroids
   if(sys.rocks){
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     for(const r of sys.rocks.rocks){
       const ang = r.ang + r.speed*t*60000.0;
       const p = [sys.center[0] + Math.cos(ang)*r.rr, sys.center[1] + r.yj, sys.center[2] + Math.sin(ang)*r.rr];
-      drawSphere(p, r.size, r.color, 0.0, false);
+      const ra = clamp(fade - (r.fadeOffset||0),0,1);
+      drawSphere(p, r.size, r.color, 0.0, false, ra);
     }
     gl.disable(gl.BLEND);
   }
@@ -950,14 +979,21 @@ function toast(text){
 }
 
 function updateHUD(t){
-  const s = [
+  const sec = sectorOf(camPos);
+  const base = [
     'ZeroUnbound — Search for Life v10',
     `Seed: 0x${seedHex}`,
     `FPS: ${fps.toFixed(1)}  tierΔ renderScale:${renderScale.toFixed(2)}`,
-    `Pos: ${camPos.map(v=>v.toFixed(1)).join(', ')}  |v|:${len(vel).toFixed(2)}`,
-    `Throttle:${(throttle*100).toFixed(0)}%  Warp:${warp?'ON':'OFF'}  Lives:${lives}  Hull:${hull.toFixed(0)}%`,
-    'Keys: WASD/QE move  Shift accel  Ctrl brake  J warp  L land  X takeoff  I invertY  H HUD  F framegraph'
-  ].join('\\n');
+    `Pos: ${camPos.map(v=>v.toFixed(1)).join(', ')}  Sec:${sec.join(',')} |v|:${len(vel).toFixed(2)}`,
+    `Throttle:${(throttle*100).toFixed(0)}%  FTL:${warp?'ON':'OFF'}  Lives:${lives}  Hull:${hull.toFixed(0)}%`,
+    'Keys: WASD/QE move  Shift boost  Ctrl brake  L land  X takeoff  I invertY  H HUD  F framegraph'
+  ];
+  if(debugDet){
+    const js = JSON.stringify(makeSystem(sec[0],sec[1],sec[2]));
+    const h = strToHex128(js).slice(0,8);
+    base.push(`Dbg sector hash:${h}`);
+  }
+  const s = base.join('\\n');
   hud.textContent = s;
 }
 
@@ -974,11 +1010,13 @@ function render(t){
   // starfield
   drawStarfield();
 
-  // draw nearby systems
-  for(const sys of systems.values()){
-    // simple distance culling
+  // draw nearby systems with fade and LRU
+  for(const [k,sys] of systems){
+    sys.fade += (sys.fadeOut? -dt : dt);
+    sys.fade = clamp(sys.fade,0,1);
+    if(sys.fade<=0 && sys.fadeOut){ systems.delete(k); continue; }
     const d = Math.hypot(camPos[0]-sys.center[0], camPos[1]-sys.center[1], camPos[2]-sys.center[2]);
-    if(d < SECTOR*1.5) drawSystem(sys, t*0.001);
+    if(d < SECTOR*1.5 && sys.fade>0.01) drawSystem(sys, t*0.001, sys.fade);
   }
 
   // overlay warp
