@@ -2,11 +2,11 @@
 
 Frame time sampling on a mid laptop (Intel Iris Xe, 1920×1080):
 
-| Scene                  | Frame ms | FPS |
-|-----------------------|---------:|----:|
-| Empty space           |   ~0.8ms | ~1250|
-| Nearby star sector    |   ~2.5ms | ~400 |
-| Warp overlay active   |   ~6.0ms | ~160 |
+| Scene                   | Frame ms | FPS |
+|------------------------|---------:|----:|
+| Empty deep space       |   ~1.2ms | ~830|
+| Star sector w/planets  |   ~3.8ms | ~260|
+| Warp streak overlay    |   ~7.0ms | ~140|
 
-Pixel renderer uses a fixed 1/4‑scale logical canvas and keeps star sprites ≤1 px for a retro aesthetic.
-No dynamic resolution; sector streaming holds a 3×3 grid (~9 sectors).
+Renderer uses a fixed quarter‑scale canvas and instanced sector streaming (3×3×3 grid).
+Stars and galaxies fade in per‑entity; QoS ladder trims sector star counts when FPS drops below 30.

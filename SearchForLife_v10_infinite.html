@@ -3,169 +3,168 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline';"/>
 <title>Search for Life — v10 • Pixel</title>
 <style>
 html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}
-canvas{image-rendering:pixelated;width:100vw;height:100vh;display:block}
-#hud{position:fixed;left:4px;top:4px;color:#0ff;background:rgba(0,0,0,.4);padding:4px;font:12px monospace;white-space:pre}
+canvas{image-rendering:pixelated;width:100vw;height:100vh;display:block;outline:none}
+#hud{position:fixed;left:4px;top:4px;color:#0ff;background:rgba(0,0,0,.4);padding:4px;font:12px monospace;white-space:pre;pointer-events:none}
 </style>
 </head>
 <body>
-<noscript><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIW2NkYGBgAAAABQABDQottAAAAABJRU5ErkJggg=="/></noscript>
+<noscript><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIW2NkYGBgAAAABQABDQottAAAAABJRU5ErkJggg==" alt=""/></noscript>
 <canvas id="c"></canvas>
 <pre id="hud"></pre>
 <script>
-/* Pixel art Search for Life — deterministic 2D sprite prototype */
+/* Search for Life — pixel‑art streaming universe prototype */
 (function(){
-const canvas=document.getElementById('c');
-const hud=document.getElementById('hud');
-let ctx;
-let DPR=1, W=0, H=0, SCALE=4;
+/*──────────────── setup ────────────────*/
+const cvs=document.getElementById('c'), hud=document.getElementById('hud');
+let ctx, W=0,H=0,SCALE=4; // pixel scaling factor
 function fit(){
-  DPR=1; // keep logical pixels
-  W=Math.floor(innerWidth/SCALE);
-  H=Math.floor(innerHeight/SCALE);
-  canvas.width=W;
-  canvas.height=H;
-  canvas.style.width=W*SCALE+'px';
-  canvas.style.height=H*SCALE+'px';
-  ctx=canvas.getContext('2d');
-  ctx.imageSmoothingEnabled=false;
+  W=Math.floor(innerWidth/SCALE); H=Math.floor(innerHeight/SCALE);
+  cvs.width=W; cvs.height=H; cvs.style.width=W*SCALE+'px'; cvs.style.height=H*SCALE+'px';
+  ctx=cvs.getContext('2d'); ctx.imageSmoothingEnabled=false;
 }
 fit(); addEventListener('resize',fit,{passive:true});
 
-/* deterministic PRNG */
+/*─────────────── deterministic PRNG ─────────────*/
 function sfc32(a,b,c,d){return function(){a|=0;b|=0;c|=0;d|=0;var t=(a+b|0)+d|0;d=d+1|0;a=b^b>>>9;b=c+(c<<3)|0;c=c<<21|c>>>11;c=c+t|0;return (t>>>0)/4294967296}}
-function hash128(str){
- let h1=1779033703,h2=3144134277,h3=1013904242,h4=2773480762;
- for(let i=0;i<str.length;i++){
-   let k=str.charCodeAt(i);
-   h1=h2+h1^(k); h2=h3+h2^(k); h3=h4+h3^(k); h4=h1+h4^(k);
- }
- h1|=0; h2|=0; h3|=0; h4|=0;
- return [h1>>>0,h2>>>0,h3>>>0,h4>>>0];
-}
-const seedStr=(window.tokenData && window.tokenData.hash)|| (location.hash.slice(1)||'pixel');
-const [a,b,c,d]=hash128(seedStr);
-const PRNG=sfc32(a,b,c,d);
-function rand(){return PRNG();}
-function randRange(min,max){return min+(max-min)*rand();}
+function hash128(str){let h1=1779033703,h2=3144134277,h3=1013904242,h4=2773480762;for(let i=0;i<str.length;i++){const k=str.charCodeAt(i);h1=h2+h1^k;h2=h3+h2^k;h3=h4+h3^k;h4=h1+h4^k;}h1|=0;h2|=0;h3|=0;h4|=0;return [h1>>>0,h2>>>0,h3>>>0,h4>>>0];}
+const seed=(window.tokenData&&window.tokenData.hash)||(location.hash.slice(1)||'pixel');
+const [sa,sb,sc,sd]=hash128(seed);const rand=sfc32(sa,sb,sc,sd);
+function randRange(a,b){return a+(b-a)*rand();}
 
-/* sector management */
-const SECTOR=256;
-const viewRange=1; // 3x3 grid
+/*────────────── sector generation ───────────────*/
+const SECTOR=256, RANGE=1; // 3×3×3 sectors
 const sectors=new Map();
-function sectorKey(x,z){return x+','+z;}
-function getSector(ix,iz){
-  const k=sectorKey(ix,iz);
-  if(sectors.has(k)) return sectors.get(k);
-  // deterministically fill stars
-  const h=sfc32(ix*1664525,iz*1013904223,ix*374761393,iz*668265263);
-  const starCount=10+Math.floor(h()*20);
+function skey(x,y,z){return x+','+y+','+z;}
+function secSeed(ix,iy,iz){return sfc32(ix*1664525,iy*1013904223,iz*374761393,(ix+iy+iz)*668265263);}
+function genSector(ix,iy,iz){
+  const key=skey(ix,iy,iz); if(sectors.has(key)) return sectors.get(key);
+  const rng=secSeed(ix,iy,iz);
+  const starCount=6+Math.floor(rng()*12);
   const stars=[];
   for(let i=0;i<starCount;i++){
-    const sx=(h()*SECTOR);
-    const sy=(h()*SECTOR);
-    const sz=(h()*SECTOR);
-    const cls=h(); // spectral
+    const x=rng()*SECTOR, y=rng()*SECTOR, z=rng()*SECTOR;
+    const cls=rng(); // spectral class roll
     let color='#fff';
-    if(cls<0.7) color='#fff';
+    if(cls<0.70) color='#fff';
     else if(cls<0.85) color='#ff9';
     else if(cls<0.95) color='#9cf';
     else color='#f99';
-    stars.push({x:sx,y:sy,z:sz,color,alpha:0});
+    const planets=[]; const pCount=rng()<0.4?rng()*3|0:0;
+    for(let p=0;p<pCount;p++){
+      planets.push({dist:20+rng()*40,size:1+rng()*2,ang:rng()*Math.PI*2,spd:0.1+rng()*0.2,color:['#6f9','#9ff','#fc9','#9f6'][p%4]});
+    }
+    stars.push({x,y,z,color,alpha:0,planets});
   }
-  const sec={ix,iz,stars};
-  sectors.set(k,sec);
-  return sec;
+  const gChance=rng(); const galaxies=[];
+  if(gChance<0.15){ // one galaxy sprite
+    galaxies.push({x:rng()*SECTOR,y:rng()*SECTOR,z:rng()*SECTOR,color:'#9cf',alpha:0});
+  }
+  const sec={ix,iy,iz,stars,galaxies};
+  sectors.set(key,sec); return sec;
 }
 
-/* player state */
-let px=0,py=0,pz=0;
-let yaw=0;
-let vel=0;
-let throttle=0;
-let warp=false;
+/*────────────── player state ───────────────*/
+let px=0,py=0,pz=0; // position
+let yaw=0,pitch=0; // orientation
+let vx=0,vy=0,vz=0; // velocity
+let throttle=0, warp=false, invertY=false;
 
-/* controls */
+/*────────────── controls ───────────────*/
 const keys=new Set();
-addEventListener('keydown',e=>{keys.add(e.key.toLowerCase()); if(e.key==='h'){hud.hidden=!hud.hidden;}});
+addEventListener('keydown',e=>{const k=e.key.toLowerCase();keys.add(k);if(k==='h')hud.hidden=!hud.hidden;if(k==='i')invertY=!invertY;});
 addEventListener('keyup',e=>{keys.delete(e.key.toLowerCase());});
-
-canvas.addEventListener('click',()=>{canvas.requestPointerLock();});
-addEventListener('pointerlockchange',()=>{});
+cvs.addEventListener('click',()=>cvs.requestPointerLock());
 addEventListener('mousemove',e=>{
- if(document.pointerLockElement!==canvas) return;
- yaw+=e.movementX*0.002;
+  if(document.pointerLockElement!==cvs) return;
+  yaw+=e.movementX*0.002;
+  pitch+=e.movementY*0.002*(invertY?-1:1);
+  const lim=Math.PI/2*0.99; if(pitch>lim)pitch=lim; if(pitch<-lim)pitch=-lim;
 });
 
-/* update loop */
+/*────────────── update ───────────────*/
 function step(dt){
+  // throttle control
   if(keys.has('w')) throttle=Math.min(1,throttle+dt);
   if(keys.has('s')) throttle=Math.max(0,throttle-dt);
-  if(keys.has('a')) yaw-=dt;
-  if(keys.has('d')) yaw+=dt;
-  const maxSpeed=warp?200:40;
+  const forward=[Math.sin(yaw)*Math.cos(pitch), Math.sin(pitch), Math.cos(yaw)*Math.cos(pitch)];
+  const right=[Math.cos(yaw),0,-Math.sin(yaw)];
+  const up=[-forward[0]*forward[1],1-forward[1]*forward[1],-forward[2]*forward[1]]; // approx up
+  const acc=throttle*(warp?160:40);
+  vx+=forward[0]*acc*dt;
+  vy+=forward[1]*acc*dt;
+  vz+=forward[2]*acc*dt;
+  const str=20*dt; if(keys.has('a')){vx+=right[0]*-str; vz+=right[2]*-str;}
+  if(keys.has('d')){vx+=right[0]*str; vz+=right[2]*str;}
+  if(keys.has('q')) vy-=str; if(keys.has('e')) vy+=str;
+  const drag=warp?0.995:0.98; vx*=drag; vy*=drag; vz*=drag;
+  px+=vx*dt; py+=vy*dt; pz+=vz*dt;
   if(keys.has('shift') && throttle>0.8) warp=true;
   if(keys.has('j')) warp=!warp;
-  vel+=throttle*80*dt;
-  vel*=0.98;
-  if(vel>maxSpeed) vel=maxSpeed;
-  const dx=Math.sin(yaw)*vel*dt;
-  const dz=Math.cos(yaw)*vel*dt;
-  px+=dx; pz+=dz;
 }
 
-/* drawing */
+/*────────────── rendering ───────────────*/
+function project(dx,dy,dz){
+  // rotate to camera space
+  const cy=Math.cos(-yaw), sy=Math.sin(-yaw);
+  const cp=Math.cos(-pitch), sp=Math.sin(-pitch);
+  let x=cy*dx - sy*dz; let z=sy*dx + cy*dz; let y=cp*dy - sp*z; z=sp*dy + cp*z; return [x,y,z];
+}
+
 function draw(){
- ctx.fillStyle='#000';
- ctx.fillRect(0,0,W,H);
- const secX=Math.floor(px/SECTOR);
- const secZ=Math.floor(pz/SECTOR);
- for(let gx=secX-viewRange; gx<=secX+viewRange; gx++){
-  for(let gz=secZ-viewRange; gz<=secZ+viewRange; gz++){
-    const sec=getSector(gx,gz);
-    for(const star of sec.stars){
-      const sx=gx*SECTOR+star.x;
-      const sz=gz*SECTOR+star.z;
-      const dx=sx-px;
-      const dz=sz-pz;
-      const rx=Math.cos(-yaw)*dx - Math.sin(-yaw)*dz;
-      const rz=Math.sin(-yaw)*dx + Math.cos(-yaw)*dz;
-      if(rz<=0) continue;
-      const scale=80/rz;
-      const x=W/2 + rx*scale;
-      const y=H/2 - star.y*scale;
-      if(x<0||x>=W||y<0||y>=H) continue;
-      star.alpha=Math.min(1,star.alpha+0.05);
-      ctx.fillStyle=star.color;
-      ctx.globalAlpha=star.alpha;
-      ctx.fillRect(Math.floor(x),Math.floor(y),1,1);
-      ctx.globalAlpha=1;
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+  const sx=Math.floor(px/SECTOR), sy=Math.floor(py/SECTOR), sz=Math.floor(pz/SECTOR);
+  for(let gx=sx-RANGE;gx<=sx+RANGE;gx++){
+    for(let gy=sy-RANGE;gy<=sy+RANGE;gy++){
+      for(let gz=sz-RANGE;gz<=sz+RANGE;gz++){
+        const sec=genSector(gx,gy,gz);
+        for(const star of sec.stars){
+          const wx=gx*SECTOR+star.x, wy=gy*SECTOR+star.y, wz=gz*SECTOR+star.z;
+          const [rx,ry,rz]=project(wx-px,wy-py,wz-pz);
+          if(rz<=1) continue;
+          const scale=80/rz; const x=W/2+rx*scale, y=H/2-ry*scale;
+          if(x<0||x>=W||y<0||y>=H) continue;
+          star.alpha=Math.min(1,star.alpha+0.05);
+          const szPix=Math.max(1,Math.min(3,3/rz));
+          ctx.globalAlpha=star.alpha; ctx.fillStyle=star.color;
+          ctx.fillRect(x|0,y|0,szPix,szPix); ctx.globalAlpha=1;
+          // planets
+          for(const p of star.planets){
+            p.ang+=p.spd*dt; const pxw=wx+Math.cos(p.ang)*p.dist, pyw=wy, pzw=wz+Math.sin(p.ang)*p.dist;
+            const [prx,pry,prz]=project(pxw-px,pyw-py,pzw-pz);
+            if(prz<=1) continue; const ps=80/prz; const sx2=W/2+prx*ps, sy2=H/2-pry*ps;
+            if(sx2<0||sx2>=W||sy2<0||sy2>=H) continue;
+            ctx.fillStyle=p.color; ctx.fillRect(sx2|0,sy2|0,1,1);
+          }
+        }
+        for(const g of sec.galaxies){
+          const wx=gx*SECTOR+g.x, wy=gy*SECTOR+g.y, wz=gz*SECTOR+g.z;
+          const [rx,ry,rz]=project(wx-px,wy-py,wz-pz);
+          if(rz<=1) continue; const scale=120/rz; const x=W/2+rx*scale, y=H/2-ry*scale;
+          if(x<0||x>=W||y<0||y>=H) continue; g.alpha=Math.min(1,g.alpha+0.02);
+          ctx.globalAlpha=g.alpha; ctx.fillStyle=g.color;
+          ctx.fillRect((x|0)-1,(y|0)-1,3,3); ctx.globalAlpha=1;
+        }
+      }
     }
   }
- }
- if(warp){
-   ctx.fillStyle='rgba(0,128,255,0.2)';
-   for(let i=0;i<50;i++){
-     const ang=Math.random()*Math.PI*2;
-     const len=randRange(10,40);
-     const x=W/2+Math.cos(ang)*len;
-     const y=H/2+Math.sin(ang)*len;
-     ctx.fillRect(x,y,1,1);
-   }
- }
- hud.textContent=`pos ${px.toFixed(1)},${pz.toFixed(1)}\nvel ${vel.toFixed(1)} yaw ${yaw.toFixed(2)}\nthr ${(throttle*100)|0}% warp ${warp?'on':'off'}`;
+  if(warp){
+    ctx.fillStyle='rgba(0,128,255,0.25)';
+    for(let i=0;i<40;i++){const ang=randRange(0,Math.PI*2);const len=randRange(10,40);const x=W/2+Math.cos(ang)*len;const y=H/2+Math.sin(ang)*len;ctx.fillRect(x|0,y|0,1,1);}
+  }
+  const speed=Math.sqrt(vx*vx+vy*vy+vz*vz);
+  hud.textContent=`pos ${px.toFixed(1)},${py.toFixed(1)},${pz.toFixed(1)}\nvel ${speed.toFixed(1)} yaw ${yaw.toFixed(2)} pitch ${pitch.toFixed(2)}\nthr ${(throttle*100)|0}% warp ${warp?'on':'off'}`;
 }
 
-let last=performance.now();
+/*────────────── main loop ──────────────*/
+let prev=performance.now();
 function loop(now){
- const dt=(now-last)/1000;
- last=now;
- step(dt);
- draw();
- requestAnimationFrame(loop);
+  const dt=(now-prev)/1000; prev=now;
+  step(dt); draw();
+  requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 })();
