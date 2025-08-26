@@ -1,0 +1,290 @@
+// 🎲 Prohibition's Random Class for all randomness for deterministic output
+class Random {
+  constructor() {
+    this.useA = false;
+    let sfc32 = function (uint128Hex) {
+      let a = parseInt(uint128Hex.substring(0, 8), 16);
+      let b = parseInt(uint128Hex.substring(8, 16), 16);
+      let c = parseInt(uint128Hex.substring(16, 24), 16);
+      let d = parseInt(uint128Hex.substring(24, 32), 16);
+      return function () {
+        a |= 0;
+        b |= 0;
+        c |= 0;
+        d |= 0;
+        let t = (((a + b) | 0) + d) | 0;
+        d = (d + 1) | 0;
+        a = b ^ (b >>> 9);
+        b = (c + (c << 3)) | 0;
+        c = (c << 21) | (c >>> 11);
+        c = (c + t) | 0;
+        return (t >>> 0) / 4294967296;
+      };
+    };
+    // seed prngA with first half of tokenData.hash
+    this.prngA = new sfc32(tokenData.hash.substring(2, 34));
+    // seed prngB with second half of tokenData.hash
+    this.prngB = new sfc32(tokenData.hash.substring(34, 66));
+    for (let i = 0; i < 1e6; i += 2) {
+      this.prngA();
+      this.prngB();
+    }
+  }
+  // random number between 0 (inclusive) and 1 (exclusive)
+  random_dec() {
+    this.useA = !this.useA;
+    return this.useA ? this.prngA() : this.prngB();
+  }
+  // random number between a (inclusive) and b (exclusive)
+  random_num(a, b) {
+    return a + (b - a) * this.random_dec();
+  }
+  // random integer between a (inclusive) and b (inclusive)
+  // requires a < b for proper probability distribution
+  random_int(a, b) {
+    return Math.floor(this.random_num(a, b + 1));
+  }
+  // random boolean with p as percent liklihood of true
+  random_bool(p) {
+    return this.random_dec() < p;
+  }
+  // random value in an array of items
+  random_choice(list) {
+    return list[this.random_int(0, list.length - 1)];
+  }
+}
+
+// Declare default dimensions in case the actual dimensions are not accessible
+const defaultWidth = 1920;  // Default screen width
+const defaultHeight = 1080;  // Default screen height
+// Manually defining PI and TWO_PI for the separate features script on prohibition.art
+const PI = 3.141592653589793;
+const TWO_PI = 6.283185307179586;
+
+// 🎲 Function to calculate unique features for each NFT
+function calculateFeatures(tokenData) {
+  let windowWidth, windowHeight;
+  // Initialize the Random class here, if not initialized in setup()
+  R = new Random(tokenData.hash, Number(tokenData.tokenId) % 1_000_000); // Initialize your Random class
+
+  // Your existing code
+  const hash = tokenData.hash;
+  const invocation = Number(tokenData.tokenId) % 1_000_000;
+  let features = {};
+
+  try {
+      windowWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
+      windowHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
+  } catch (e) {
+      // If dimensions are not accessible, use default dimensions
+      windowWidth = defaultWidth;
+      windowHeight = defaultHeight;
+  }
+
+  // 🌏 Boolean features
+  features.isEarthLike = R.random_bool(0.05);  // 5% chance of being Earth-like
+  features.hasRings = R.random_bool(0.5);  // 50% chance of having rings
+  features.isRainbowRing = features.hasRings ? R.random_bool(0.1) : false;  // 10% chance of rainbow rings if rings are present
+
+  // 🌈 Only generate ring colors if there are rings
+  if (features.hasRings) {
+      const possibleHues = [0, 45, 90, 135, 180, 225, 270, 315, 360];
+      let innerRingColor = [R.random_choice(possibleHues), 100, 100];
+      let outerRingColor = [R.random_choice(possibleHues), 100, 100];
+
+      // Adding a random hue to either the inner or outer ring to increase chances of them being different
+      if (R.random_bool(0.5)) {  // 50% chance
+          // Change the hue of the outer ring
+          outerRingColor[0] = (outerRingColor[0] + R.random_num(0, 359)) % 360;
+      } else {
+          // Change the hue of the inner ring
+          innerRingColor[0] = (innerRingColor[0] + R.random_num(0, 359)) % 360;
+      }
+
+      // Calculate color names after hue shift
+      const describeColor = (hue) => {
+        const colorRanges = [
+            'Red', 'Orange-Red', 'Dark Orange', 'Orange', 'Yellow-Orange',
+            'Dark Yellow', 'Yellow', 'Light Yellow', 'Lime', 'Green-Yellow',
+            'Light Green', 'Green', 'Dark Green', 'Green-Teal', 'Teal',
+            'Dark Teal', 'Cyan', 'Light Cyan', 'Dark Cyan', 'Sky Blue',
+            'Blue', 'Royal Blue', 'Light Blue', 'Navy', 'Dark Blue',
+            'Purple', 'Violet', 'Lavender', 'Magenta', 'Deep Magenta',
+            'Pink', 'Hot Pink', 'Fuchsia', 'Deep Pink', 'Salmon',
+            'Coral', 'Tomato'
+        ];
+    
+        // The index is calculated by floor division of hue by 10
+        const index = Math.floor(hue / 10);
+    
+        // Return the corresponding color name, or 'Red' if index is out of range
+        return colorRanges[index] || 'Red';
+      };
+    
+      // Prepare a nested object for ring color attributes if it doesn't exist
+      features.RingColorAttributes = features.RingColorAttributes || {};
+
+      // Save color names for display
+      features.RingColorAttributes.outRing = describeColor(outerRingColor[0]);
+      features.RingColorAttributes.inRing = describeColor(innerRingColor[0]);
+
+      // If rainbow rings, set the color name to 'Rainbow'
+      if (features.isRainbowRing) {
+          features.RingColorAttributes.outRing = '🌈';
+          features.RingColorAttributes.inRing = '🌈';
+          outerRingColor = '🌈';
+          innerRingColor = '🌈';
+      }
+  } else {
+      // Prepare a nested object for ring color attributes if it doesn't exist
+      features.RingColorAttributes = features.RingColorAttributes || {};
+
+      // If no rings, set the color name to 'None'
+      features.RingColorAttributes.outRing = 'None';
+      features.RingColorAttributes.inRing = 'None';
+  }
+
+  // 🌏 Moon features
+  features.numMoons = R.random_int(0, 3);
+
+  // 🌏 Planet size Enum class
+  const PlanetSizeEnum = {
+      DWARF: 'DWARF',
+      SMALL: 'SMALL',
+      MEDIUM: 'MEDIUM',
+      LARGE: 'LARGE',
+      GIANT: 'GIANT',
+      GARGANTUAN: 'GARGANTUAN',
+      COLOSSAL: 'COLOSSAL',
+      UNIVERSAL: 'UNIVERSAL',
+      MULTIVERSAL: 'MULTIVERSAL',
+      OMNIVERSAL: 'OMNIVERSAL'
+  };
+  // 🌍 Planet Size Class (weights are now more explicit)
+  const PlanetSize = [
+      { name: 'Dwarf', value: PlanetSizeEnum.DWARF, weight: 10 },
+      { name: 'Small', value: PlanetSizeEnum.SMALL, weight: 20 },
+      { name: 'Medium', value: PlanetSizeEnum.MEDIUM, weight: 30 },
+      { name: 'Large', value: PlanetSizeEnum.LARGE, weight: 20 },
+      { name: 'Giant', value: PlanetSizeEnum.GIANT, weight: 10 },
+      { name: 'Gargantuan', value: PlanetSizeEnum.GARGANTUAN, weight: 5 },
+      { name: 'Colossal', value: PlanetSizeEnum.COLOSSAL, weight: 3 },
+      { name: 'Universal', value: PlanetSizeEnum.UNIVERSAL, weight: 1 },
+      { name: 'Multiversal', value: PlanetSizeEnum.MULTIVERSAL, weight: 1 },
+      { name: 'Omniversal', value: PlanetSizeEnum.OMNIVERSAL, weight: 1 }
+  ];
+  let weightedArray = [];  // 🌏 for Planet Size
+  PlanetSize.forEach((size) => { 
+      for (let i = 0; i < size.weight; i++) {
+      weightedArray.push(size);
+      }
+  });
+  function getNumericSize(sizeEnum) {
+  switch(sizeEnum) {
+      case 'DWARF': return 1;
+      case 'SMALL': return 2;
+      case 'MEDIUM': return 3;
+      case 'LARGE': return 4;
+      case 'GIANT': return 5;
+      case 'GARGANTUAN': return 6;
+      case 'COLOSSAL': return 7;
+      case 'UNIVERSAL': return 8;
+      case 'MULTIVERSAL': return 9;
+      case 'OMNIVERSAL': return 10;
+      default: return 1;
+  }
+  }
+
+  // 🌏 Randomly select a size category
+  const selectedSize = R.random_choice(weightedArray);
+  features.sizeCategory = selectedSize.value;
+
+  // 🌏 Calculate the actual size
+  let maxSize = 150;  // Maximum size defined in CelestialObject, redefined here
+  let minDimension = Math.min(windowWidth, windowHeight);
+  let minSize = Math.round(minDimension * 0.05);  // 5% of minDimension
+  let increment = Math.round((minDimension * 0.08 - minSize) / 9);  // (8% - 5%) / 9 categories
+
+  // 🌏 Calculate size and cap it between minSize and maxSize
+  const numericSize = getNumericSize(features.sizeCategory);
+
+  // 🏆 Rarity Scoring Class
+  class Rarity {
+    constructor(features) {
+      this.features = features;
+    }
+
+    // Enum-like object for rarity levels
+    static RARITY_LEVELS = {
+      '🍀': 'Quantum',
+      '🍀🍀': 'Subatomic',
+      '🍀🍀🍀': 'Atomic',
+      '🍀🍀🍀🍀': 'Molecular',
+      '🍀🍀🍀🍀🍀': 'Stellar',
+      '🍀🍀🍀🍀🍀🍀': 'Galactic',
+      '🍀🍀🍀🍀🍀🍀🍀': 'Cosmic',
+      '🍀🍀🍀🍀🍀🍀🍀🍀': 'Ethereal',
+      '🍀🍀🍀🍀🍀🍀🍀🍀🍀': 'Transcendental',
+      '🍀🍀🍀🍀🍀🍀🍀🍀🍀🍀': 'Omnipotent'
+    };
+
+    // Internal function to calculate score
+    _calculateScore() {
+      this.score = 0;
+      // 5% Earth-like feature adds the most points
+      if (this.features.isEarthLike) {
+          this.score += 3000;
+      }
+
+      // Ring attributes
+      if (this.features.hasRings) {
+          this.score += 500;
+          if (this.features.isRainbowRing) {
+          this.score += 1000;
+          }
+      }
+
+      // Moons: More moons add more rarity
+      this.score += this.features.numMoons * 100;
+
+      // 🌏🌕 Composite Feature based on Moons and Planet Size
+      // Sum the number of moons (0-3) and the numeric size of the planet (1-10)
+      const compositeFeatureRawScore = this.features.numMoons + getNumericSize(this.features.sizeCategory);
+      
+      // Normalize the composite feature score to fit between 1 and 10
+      const compositeFeatureNormalizedScore = Math.min(Math.max(Math.round(compositeFeatureRawScore / 13 * 10), 1), 10); // Divide by 13 as 3 (max moons) + 10 (max size) = 13
+      
+      // Add the composite feature score to the overall score, after multiplying by 50
+      this.score += compositeFeatureNormalizedScore * 50;
+
+      // Planet size, bigger is rarer
+      const sizeNumericValue = getNumericSize(this.features.sizeCategory); // Get numeric value based on size category
+      this.score += sizeNumericValue * 50; // Multiply by 50 for each size category, rarest planet size gets 500 points
+
+      return this.score;
+    }
+
+    // Classify rarity based on score
+    classifyRarity() {
+      this._calculateScore();  // Re-calculate the score first
+
+      if (this.score >= 4800) return {emoji: '🍀🍀🍀🍀🍀🍀🍀🍀🍀🍀', name: 'Omnipotent'};
+      if (this.score >= 3300) return {emoji: '🍀🍀🍀🍀🍀🍀🍀🍀🍀', name: 'Transcendental'};
+      if (this.score >= 3000) return {emoji: '🍀🍀🍀🍀🍀🍀🍀🍀', name: 'Ethereal'};
+      if (this.score >= 2800) return {emoji: '🍀🍀🍀🍀🍀🍀🍀', name: 'Cosmic'};
+      if (this.score >= 2500) return {emoji: '🍀🍀🍀🍀🍀🍀', name: 'Galactic'};
+      if (this.score >= 1800) return {emoji: '🍀🍀🍀🍀🍀', name: 'Stellar'};
+      if (this.score >= 1500) return {emoji: '🍀🍀🍀🍀', name: 'Molecular'};
+      if (this.score >= 1300) return {emoji: '🍀🍀🍀', name: 'Atomic'};
+      if (this.score >= 1000) return {emoji: '🍀🍀', name: 'Subatomic'};
+      return {emoji: '🍀', name: 'Quantum'};
+    }
+  }
+
+  // 🏆 Calculate Rarity at the end
+  const rarity = new Rarity(features);
+  const rarityClassification = rarity.classifyRarity();
+  features.rarityScore = rarityClassification.name;
+  features.rarityEmoji = rarityClassification.emoji;
+  return features;
+}

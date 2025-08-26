@@ -1,0 +1,38 @@
+High-Level Project Outline: Warp Speed Animation Project for Prohibition.art NFT
+Objective:
+To create a captivating 30-second 3D animation loop designed to provide the sensation of warp speed travel through space, concluding in a visual spectacle within a colorful Geometric Universe. The animation will be created using p5.js and will be uploaded as an NFT to Prohibition.art.
+
+Project Components and Structure:
+🎨 Initialize Canvas:
+
+Set up a 3D canvas using p5.js's WEBGL renderer.
+Initialize a variable to allow WebGL for the black plane.
+🎲 Random Seed:
+
+Utilize a custom random class, compatible with Prohibition's Random class, for generating unique seeds based on various factors like time and user-agent.
+🔮 Quantum Particles:
+
+Code to create dynamic 3D shapes like spheres and toruses, which represent quantum particles. These particles are placed in the 3D space and have various sizes and colors and stretch to a WarpSpeedFactor that gets more intense as the viewer is transported through hyperspace and into the other end of an Einstein-Rosenbridge.
+🌈 Flowing Rainbows:
+
+Generate colorful arcs that overlay on the quantum particles. The arcs are created using lines that are colored to mimic a rainbow spectrum.
+🌌 Space-Time Warp:
+
+Create a background composed of stars that gives the feeling of traveling through space at warp speed. This layer should be between the rainbows and particles, but in front of the Black Plane with a Growing Hole.
+⏲ Animation Loop & WarpSpeedFactor:
+🛑 Black Plane with Growing Hole:
+
+A black plane that initially covers the entire canvas but gradually reveals a growing hole in the middle, through which the Quantum Crystalverse becomes visible.
+👾 Error Handling: Code to catch and log any errors that occur during the execution of the animation.
+
+The entire animation loops perfectly in 30 seconds, and a warp speed factor controls the speed of the animation.  The first 10 seconds of the animation should contain the wormhole travel sequence, which has the stars, rainbows, particles all stretching more and more as we reach Faster Than Light Travel through the wormhole.  The Destination of the wormhole will be represented by a Black Plane, that covers the background with a growing hole in the center (made with a stencil buffer).  Behind this Growing Hole we should be able to see the destination, a Geometric Universe. At the end of the wormhole travel sequence, all components of that sequence should dissapear, revealing us inside of a geometric Universe for the duration of the animation's 20 remaining seconds.
+3D object called 🎭 GeometricUniverse to serve as the destination behind the black plane. This object will be made up of interconnected line segments and vertices made of spheres. These tetrahedrons/polytope cellulation structure will be connected to form a more complex geometric object, offering gaps and holes to see the background.
+
+The destination at the end of the warp tunnel. During the last 20 seconds of the loop, the viewer is inside a colorful, procedurally generated crystal structure the 🎭 GeometricUniverse.
+The camera within this space rotates to give a full view of the internal structure.
+
+
+At the end of the initial 10 second Warp Speed Sequence where stars, quantum particles, and rainbows stretch further and further as we reach Faster Than Light travel throught the wormhole, a new sequence begins as we have arrived at our destination beyond the einstein-rosen bridge (growing hole in black plane).  This sequence should contain the last 20 seconds of the rest of the animation, and should work as follows:  a 3D camera is stationary at 0, 0, 0, and the Geometric Universe should be drawn around it, completely encapsulating the camera.  The Geometric Univers needs to be drawn such that it's origin is centered and fixed around the camera, and no shapes interfere or cross through the lense. The 3D camera can then rotate in that fixed position in all sorts of directions, slowly, making complete revolutions on x and y in a sine wave pattern to reveal the complete structure in 360 degrees of the entire geometric-verse. The Blue background is behind everything (will be updated later to a sort of Nebula/galaxy riden universe painted HDRI once ChatGPT can figure out how to get this right).
+
+The canvas resizes dynamically based on the window dimensions, and the stars re-initialize to fit the new dimensions as well as any other components of the animation to maintain a resolution agnostic Long Form Generative NFT project.
+This project is designed to be a visually stunning experience, leveraging both aesthetic and technical elements to create a unique NFT. The code is highly optimized for performance and is well-structured to allow for future modifications and improvements.
