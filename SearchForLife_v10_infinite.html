@@ -1,6 +1,6 @@
 <!--Developed by @jams2blues – ZeroContract Studio
 File: SearchForLife_v10_infinite.html
-Rev: r14
+Rev: r15
 Summary: Infinite deterministic pixel-universe with 6DOF flight and warp-->
 <!DOCTYPE html>
 <html lang="en">
@@ -51,6 +51,9 @@ Summary: Infinite deterministic pixel-universe with 6DOF flight and warp-->
     position:fixed;right:.6rem;top:.6rem;z-index:3;pointer-events:none;
     width:240px;height:60px;border:1px solid var(--hud-br);background:rgba(0,0,0,.25)
   }
+  body.touch #hud{top:.6rem;bottom:auto;}
+  body.touch #msg{top:.6rem;bottom:auto;}
+  body.touch #framegraph{display:none;}
 </style>
 </head>
 <body>
@@ -498,9 +501,11 @@ let landed=false;
 let lives=3;
 let hull=100;
 function setupTouch(){
+  document.body.classList.add('touch');
   const joyL=$$("joyL"), joyR=$$("joyR"), knobL=joyL.firstElementChild, knobR=joyR.firstElementChild;
   [joyL,joyR,$$("btnUp"),$$("btnDown"),$$("btnBoost"),$$("btnBrake")].forEach(el=>{el.style.display="flex";});
   intro.textContent="Tap to start — left pad move • right pad look • ▲ ascend • ▼ descend • ⚡ boost • ⛔ brake • H HUD";
+  glCanvas.addEventListener('touchstart',()=>intro.classList.add('hidden'),{once:true});
   let jl=false,jr=false;
   joyL.addEventListener("pointerdown",e=>{jl=true;joyL.setPointerCapture(e.pointerId);});
   joyL.addEventListener("pointermove",e=>{if(!jl)return;const r=joyL.getBoundingClientRect();let dx=(e.clientX-r.left-r.width/2)/(r.width/2);let dy=(e.clientY-r.top-r.height/2)/(r.height/2);dx=clamp(dx,-1,1);dy=clamp(dy,-1,1);joyMoveX=dx;joyMoveY=-dy;knobL.style.left=(dx*40+50)+"%";knobL.style.top=(dy*40+50)+"%";});
@@ -1552,4 +1557,4 @@ Line500: reserved for future expansion.
 </script>
 </body>
 </html>
-<!-- What changed & why: wrap starfield around camera, tune mobile performance, and expose speed gauge in HUD -->
+<!-- What changed & why: repositioned HUD for touch devices and added auto-hide framegraph -->

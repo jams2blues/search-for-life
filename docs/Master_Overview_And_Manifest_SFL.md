@@ -1,6 +1,6 @@
 # Search for Life — Master_Overview_And_Manifest_SFL.md
 **Repo**: `jams2blues/search-for-life`  
-**Last updated**: 2025-08-27 18:13:52 UTC
+**Last updated**: 2025-08-27 19:45:00 UTC
 **Maintainers**: @jams2blues (owner), ZeroContract Studio (project), **AI Agents**: Codex primary + GPT‑5 Pro (you) as PM/Architect/QA.
 
 ---
@@ -121,6 +121,7 @@ This document is the canonical, exhaustive manifest. New agents **must read this
 
 - 2025-08-27 17:13:11 UTC — Documented mouse-axis invariant and initial mobile controls. (Author: GPT-5 Pro)
 - 2025-08-27 18:13:52 UTC — Wrapped starfield around camera and added speed gauge for clearer motion. (Author: GPT-5 Pro)
+- 2025-08-27 19:45:00 UTC — Repositioned HUD for touch devices and exposed on-screen joysticks without overlap. (Author: GPT-5 Pro)
 ---
 
 ## 9) Change Log (high‑level)
@@ -138,3 +139,4 @@ This document is the canonical, exhaustive manifest. New agents **must read this
 
 ## 11) Legal / Licensing
 - All code is original to this project; contributors license their changes under project license for minting and on‑chain display. Third‑party code snippets are not permitted without explicit owner approval.
+<!-- What changed & why: recorded mobile HUD adjustments -->
