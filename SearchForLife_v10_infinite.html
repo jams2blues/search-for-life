@@ -1,3 +1,7 @@
+<!--Developed by @jams2blues – ZeroContract Studio
+File: SearchForLife_v10_infinite.html
+Rev: r12
+Summary: Infinite deterministic pixel-universe with 6DOF flight and warp-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -477,7 +481,7 @@ let shipRadius = 2.5;
 
 glCanvas.addEventListener('click', ()=>{
   if(!pointerLocked){
-    glCanvas.requestPointerLock();
+    glCanvas.requestPointerLock().catch(()=>{});
   }
 });
 document.addEventListener('pointerlockchange', ()=>{
@@ -487,7 +491,7 @@ document.addEventListener('pointerlockchange', ()=>{
 addEventListener('mousemove', (e)=>{
   if(!pointerLocked || landed) return;
   const sens = 0.0025 * (warp? 0.5: 1);
-  const yawD = e.movementX * sens;
+  const yawD = -e.movementX * sens;
   const pitchD = (invertY? 1:-1) * e.movementY * sens;
   const upAxis = quatRotate(orient,[0,1,0]);
   const rightAxis = quatRotate(orient,[1,0,0]);
@@ -1505,3 +1509,4 @@ Line500: reserved for future expansion.
 </script>
 </body>
 </html>
+<!-- What changed & why: corrected yaw direction and handled pointer-lock promise to avoid console error -->
