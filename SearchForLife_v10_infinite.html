@@ -1,6 +1,6 @@
 <!--Developed by @jams2blues – ZeroContract Studio
 File: SearchForLife_v10_infinite.html
-Rev: r13
+Rev: r14
 Summary: Infinite deterministic pixel-universe with 6DOF flight and warp-->
 <!DOCTYPE html>
 <html lang="en">
@@ -400,10 +400,12 @@ layout(location=0) in vec3 aPos;   // unit sphere directions
 layout(location=1) in vec3 aCol;   // rgb
 uniform mat4 uP, uVR;              // rotation-only view
 uniform float uScale;
+uniform vec3 uCamPos;
 out vec3 vCol;
 void main(){
-  vec3 world = aPos * uScale;
-  vec4 v = uVR * vec4(world, 1.0);
+  vec3 world = aPos * uScale + uCamPos;
+  world = mod(world + uScale, uScale*2.0) - uScale; // wrap around camera
+  vec4 v = uVR * vec4(world - uCamPos, 1.0);
   gl_Position = uP * v;
   gl_PointSize = clamp(3.0 / max(0.15, -v.z), 1.0, 6.0);
   vCol = aCol;
@@ -727,7 +729,7 @@ function mat4Perspective(fovy, aspect, near, far){
 let progSphere, progStar, progStarfield, progFS;
 let sphere, quad, starfield;
 let projection, view;
-let renderScale = 0.75; // start scaled for pixel-art performance
+let renderScale = touchMode?0.6:0.75; // start scaled lower on mobile
 
 function initScene(){
   initGL();
@@ -738,7 +740,7 @@ function initScene(){
   progFS = makeProgram(VS_FS, FS_WARP);
   sphere = makeIcoSphere(3);
   quad   = makeQuad();
-  starfield = makeStarfield(4000, 3000);
+  starfield = makeStarfield(touchMode?2000:4000, 3000);
 }
 
 function setCommonMatrices(){
@@ -762,10 +764,12 @@ function drawStarfield(){
   const uP=gl.getUniformLocation(progStarfield,'uP');
   const uVR=gl.getUniformLocation(progStarfield,'uVR');
   const uScale=gl.getUniformLocation(progStarfield,'uScale');
+  const uCamPos=gl.getUniformLocation(progStarfield,'uCamPos');
   gl.uniformMatrix4fv(uP,false,new Float32Array(projection));
   const viewRot=view.slice(); viewRot[12]=viewRot[13]=viewRot[14]=0;
   gl.uniformMatrix4fv(uVR,false,new Float32Array(viewRot));
   gl.uniform1f(uScale, starfield.scale);
+  gl.uniform3fv(uCamPos,new Float32Array(camPos));
   gl.bindVertexArray(starfield.vao);
   gl.drawArrays(gl.POINTS,0,starfield.drawCount);
   gl.bindVertexArray(null);
@@ -1548,4 +1552,4 @@ Line500: reserved for future expansion.
 </script>
 </body>
 </html>
-<!-- What changed & why: add mobile touch controls and document mouse-axis invariant -->
+<!-- What changed & why: wrap starfield around camera, tune mobile performance, and expose speed gauge in HUD -->
