@@ -507,7 +507,9 @@ addEventListener('keydown', (e)=>{
 });
 addEventListener('keyup', (e)=>{ keys.delete(e.key.toLowerCase()); });
 
-function orientationQuat(){ return quatFromEuler(roll,pitch,yaw); }
+// compose orientation from yaw (Y), pitch (X), roll (Z)
+// order matters: yaw → pitch → roll
+function orientationQuat(){ return quatFromEuler(yaw,pitch,roll); }
 function forward(){ return quatRotate(orientationQuat(), [0,0,-1]); }
 function right(){ return quatRotate(orientationQuat(), [1,0,0]); }
 function up(){ return quatRotate(orientationQuat(), [0,1,0]); }
@@ -934,11 +936,25 @@ function toast(text){
 }
 
 function updateHUD(t){
+  const speed=len(vel);
+  const fw=dot(vel, forward());
+  const maxGauge=warp? vFTL : 200;
+  const norm=clamp(fw/maxGauge,-1,1);
+  const barLen=16; const mid=barLen/2;
+  let bar='';
+  for(let i=0;i<barLen;i++){
+    if(i===mid){ bar+='|'; continue; }
+    const rel=i<mid?(mid-i)/mid:(i-mid)/(barLen-mid);
+    if((i>mid && norm>0 && rel<=norm) || (i<mid && norm<0 && rel<=-norm)) bar+='=';
+    else bar+='.';
+  }
+  const dir = fw>=0? 'FWD':'REV';
   const s = [
     'ZeroUnbound — Search for Life v10',
     `Seed: 0x${seedHex}`,
     `FPS: ${fps.toFixed(1)}  tierΔ renderScale:${renderScale.toFixed(2)}`,
-    `Pos: ${camPos.map(v=>v.toFixed(1)).join(', ')}  |v|:${len(vel).toFixed(2)}`,
+    `Pos: ${camPos.map(v=>v.toFixed(1)).join(', ')}  |v|:${speed.toFixed(2)}`,
+    `Speed ${dir} ${bar} ${Math.abs(fw).toFixed(1)}`,
     `Throttle:${(throttle*100).toFixed(0)}%  Warp:${warp?'ON':'OFF'}  Lives:${lives}  Hull:${hull.toFixed(0)}%`,
     'Keys: WASD/QE move  Shift accel  Ctrl brake  J warp  L land  X takeoff  I invertY  H HUD  F framegraph'
   ].join('\\n');
