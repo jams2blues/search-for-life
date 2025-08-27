@@ -507,9 +507,10 @@ addEventListener('keydown', (e)=>{
 });
 addEventListener('keyup', (e)=>{ keys.delete(e.key.toLowerCase()); });
 
-function forward(){ return quatRotate(quatFromEuler(yaw,pitch,roll), [0,0,-1]); }
-function right(){ return quatRotate(quatFromEuler(yaw,pitch,roll), [1,0,0]); }
-function up(){ return quatRotate(quatFromEuler(yaw,pitch,roll), [0,1,0]); }
+function orientationQuat(){ return quatFromEuler(roll,pitch,yaw); }
+function forward(){ return quatRotate(orientationQuat(), [0,0,-1]); }
+function right(){ return quatRotate(orientationQuat(), [1,0,0]); }
+function up(){ return quatRotate(orientationQuat(), [0,1,0]); }
 
 function updateControls(dt){
   const acc= warp? 400 : 80;
@@ -703,8 +704,10 @@ function setCommonMatrices(){
   const aspect = (W/renderScale) / (H/renderScale);
   projection = mat4Perspective(PI/3, aspect, 0.1, 100000.0);
   // view from yaw/pitch/roll & camPos
-  const q = quatFromEuler(yaw,pitch,roll);
-  const f = forward(), r=right(), u=up();
+  const q = orientationQuat();
+  const f = quatRotate(q, [0,0,-1]);
+  const r = quatRotate(q, [1,0,0]);
+  const u = quatRotate(q, [0,1,0]);
   // construct inverse rotation/translation
   view=[
     r[0], u[0], -f[0], 0,
