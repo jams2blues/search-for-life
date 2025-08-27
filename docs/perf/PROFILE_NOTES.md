@@ -9,4 +9,4 @@ Frame time sampling on a mid laptop (Intel Iris Xe, 1920×1080):
 | Warp streak overlay    |   ~7.0ms | ~140|
 
 Renderer uses a fixed quarter‑scale canvas and instanced sector streaming (3×3×3 grid).
-Stars and galaxies fade in per‑entity; QoS ladder trims sector star counts when FPS drops below 30.
+Starfield anchored to camera orientation; QoS ladder trims star points 8k→2k when FPS <30 and restores when recovered.
