@@ -151,6 +151,30 @@ const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
 const mul=(v,s)=>[v[0]*s,v[1]*s,v[2]*s];
 const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+function quatMul(a,b){
+  const ax=a[0], ay=a[1], az=a[2], aw=a[3];
+  const bx=b[0], by=b[1], bz=b[2], bw=b[3];
+  return [
+    aw*bx + ax*bw + ay*bz - az*by,
+    aw*by - ax*bz + ay*bw + az*bx,
+    aw*bz + ax*by - ay*bx + az*bw,
+    aw*bw - ax*bx - ay*by - az*bz
+  ];
+}
+function quatRotate(q, v){
+  const x=q[0], y=q[1], z=q[2], w=q[3];
+  const u=[x,y,z];
+  const s=2*dot(u,v);
+  return add(add(mul(u,s), mul(v, w*w - dot(u,u))), mul(cross(u,v), 2*w));
+}
+function quatFromAxisAngle(axis, ang){
+  const s=Math.sin(ang/2);
+  return [axis[0]*s, axis[1]*s, axis[2]*s, Math.cos(ang/2)];
+}
+function quatNormalize(q){
+  const l=Math.hypot(q[0],q[1],q[2],q[3])||1;
+  return [q[0]/l,q[1]/l,q[2]/l,q[3]/l];
+}
 
 function hsl2rgb(h,s,l){
   h=(h%360+360)%360/360;
@@ -440,7 +464,7 @@ function makeStarfield(N=4000, scale=2000){
 const keys=new Set();
 let pointerLocked=false;
 let invertY=false;
-let yaw=0, pitch=0, roll=0;
+let orient=[0,0,0,1];
 let camPos=[0,0,80];
 let vel=[0,0,0];
 let throttle=0;             // 0..1
@@ -463,9 +487,13 @@ document.addEventListener('pointerlockchange', ()=>{
 addEventListener('mousemove', (e)=>{
   if(!pointerLocked || landed) return;
   const sens = 0.0025 * (warp? 0.5: 1);
-  yaw += e.movementX * sens;
-  pitch += (invertY? 1:-1) * e.movementY * sens;
-  pitch = clamp(pitch, -PI*0.48, PI*0.48);
+  const yawD = e.movementX * sens;
+  const pitchD = (invertY? 1:-1) * e.movementY * sens;
+  const upAxis = quatRotate(orient,[0,1,0]);
+  const rightAxis = quatRotate(orient,[1,0,0]);
+  const qYaw = quatFromAxisAngle(upAxis, yawD);
+  const qPitch = quatFromAxisAngle(rightAxis, pitchD);
+  orient = quatNormalize(quatMul(qPitch, quatMul(qYaw, orient)));
 });
 
 addEventListener('keydown', (e)=>{
@@ -479,24 +507,10 @@ addEventListener('keydown', (e)=>{
 });
 addEventListener('keyup', (e)=>{ keys.delete(e.key.toLowerCase()); });
 
-// camera orientation helpers (FPS-style yaw/pitch)
-function forward(){
-  const cy=Math.cos(yaw), sy=Math.sin(yaw);
-  const cp=Math.cos(pitch), sp=Math.sin(pitch);
-  return [sy*cp, sp, -cy*cp];
-}
-function right(){
-  const cy=Math.cos(yaw), sy=Math.sin(yaw);
-  return [cy, 0, sy];
-}
-function up(){
-  const f=forward(), r=right();
-  return [
-    r[1]*f[2]-r[2]*f[1],
-    r[2]*f[0]-r[0]*f[2],
-    r[0]*f[1]-r[1]*f[0]
-  ];
-}
+// orientation helpers
+function forward(){ return quatRotate(orient,[0,0,-1]); }
+function right(){ return quatRotate(orient,[1,0,0]); }
+function up(){ return quatRotate(orient,[0,1,0]); }
 
 function updateControls(dt){
   const acc= warp? 400 : 80;
@@ -528,8 +542,6 @@ function updateControls(dt){
   // move
   camPos = add(camPos, mul(vel, dt));
 
-  // roll damping
-  roll *= Math.exp(-dt*2.5);
 }
 
 /*──────────────────────────────────────────────────────────────────────────────
@@ -689,7 +701,7 @@ function initScene(){
 function setCommonMatrices(){
   const aspect = (W/renderScale) / (H/renderScale);
   projection = mat4Perspective(PI/3, aspect, 0.1, 100000.0);
-  // view from yaw/pitch & camPos
+  // view from orientation quaternion & camPos
   const f = forward();
   const r = right();
   const u = up();
