@@ -20,9 +20,9 @@
      - Throttle (0..1), acceleration `a = throttle * aMax`, with boost (SHIFT) up to `aMaxBoost`.
      - Velocity clamped with **drag** curve for sublight; FTL engages at `|v| > vFTLThreshold`.
    - **FTL visuals**: reuse & adapt earlier warp tunnel effect; hueshift with relativistic gradient.
-   - Mouse‑look: non‑inverted by default; toggle with `I`. Fix yaw/pitch mapping (Y up), pointer‑lock.
    - WASD strafes, QE up/down, CTRL for brake. Gamepad optional.
-
+   - Mouse‑look: non‑inverted by default; toggle with `I`. Fix yaw/pitch mapping (Y up), pointer‑lock. Mapping is invariant.
+   - Mobile: virtual joystick + throttle slider; buttons for boost, brake, ascend, descend.
 3. **Celestial Simulation (to‑scale but playable)**
    - Star colors vary (OBAFGKM with temperature → color). Luminance falloff over distance; HDR tonemap to LDR.
    - **Solar systems**: within `Rspawn` of a star, spawn planets & moons with stable orbits (semi‑major axis + eccentricity; orbital period via Kepler’s third law simplified).

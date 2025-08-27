@@ -1,6 +1,6 @@
 <!--Developed by @jams2blues – ZeroContract Studio
 File: SearchForLife_v10_infinite.html
-Rev: r12
+Rev: r13
 Summary: Infinite deterministic pixel-universe with 6DOF flight and warp-->
 <!DOCTYPE html>
 <html lang="en">
@@ -38,6 +38,15 @@ Summary: Infinite deterministic pixel-universe with 6DOF flight and warp-->
     width:20px;height:20px;border-radius:50%;border:2px solid var(--hud-br); pointer-events:none;
     box-shadow:0 0 0 1px rgba(0,255,255,.15), 0 0 6px rgba(0,255,255,.25) inset;
   }
+  .joy{position:fixed;z-index:4;width:120px;height:120px;border:2px solid var(--hud-br);border-radius:50%;background:rgba(0,0,0,.25);touch-action:none;display:none;}
+  .joy>div{position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;background:rgba(0,255,255,.4);}
+  #joyL{left:1rem;bottom:1rem;}
+  #joyR{right:1rem;bottom:1rem;}
+  .btn{position:fixed;z-index:4;width:48px;height:48px;border:2px solid var(--hud-br);border-radius:8px;background:rgba(0,0,0,.25);color:var(--hud);display:none;align-items:center;justify-content:center;touch-action:none;}
+  #btnUp{right:1rem;bottom:7rem;}
+  #btnDown{right:1rem;bottom:1rem;}
+  #btnBoost{left:calc(50% - 60px);bottom:1rem;}
+  #btnBrake{left:calc(50% + 12px);bottom:1rem;}
   #framegraph{
     position:fixed;right:.6rem;top:.6rem;z-index:3;pointer-events:none;
     width:240px;height:60px;border:1px solid var(--hud-br);background:rgba(0,0,0,.25)
@@ -52,6 +61,12 @@ Summary: Infinite deterministic pixel-universe with 6DOF flight and warp-->
 </pre>
 <pre id="hud" class="hidden"></pre>
 <pre id="msg"></pre>
+<div id="joyL" class="joy"><div></div></div>
+<div id="joyR" class="joy"><div></div></div>
+<div id="btnUp" class="btn">▲</div>
+<div id="btnDown" class="btn">▼</div>
+<div id="btnBoost" class="btn">⚡</div>
+<div id="btnBrake" class="btn">⛔</div>
 
 <script>
 /*──────────────────────────────────────────────────────────────────────────────
@@ -81,6 +96,9 @@ const hud = $$('hud');
 const intro = $$('intro');
 const msg = $$('msg');
 const framegraph = $$('framegraph');
+let touchMode = "ontouchstart" in window;
+let joyMoveX=0, joyMoveY=0, joyLookX=0, joyLookY=0;
+let btnUp=false, btnDown=false, btnBoost=false, btnBrake=false;
 let gl;
 
 let DPR=1, W=0, H=0;
@@ -477,10 +495,30 @@ let warp=false;             // FTL engaged
 let landed=false;
 let lives=3;
 let hull=100;
+function setupTouch(){
+  const joyL=$$("joyL"), joyR=$$("joyR"), knobL=joyL.firstElementChild, knobR=joyR.firstElementChild;
+  [joyL,joyR,$$("btnUp"),$$("btnDown"),$$("btnBoost"),$$("btnBrake")].forEach(el=>{el.style.display="flex";});
+  intro.textContent="Tap to start — left pad move • right pad look • ▲ ascend • ▼ descend • ⚡ boost • ⛔ brake • H HUD";
+  let jl=false,jr=false;
+  joyL.addEventListener("pointerdown",e=>{jl=true;joyL.setPointerCapture(e.pointerId);});
+  joyL.addEventListener("pointermove",e=>{if(!jl)return;const r=joyL.getBoundingClientRect();let dx=(e.clientX-r.left-r.width/2)/(r.width/2);let dy=(e.clientY-r.top-r.height/2)/(r.height/2);dx=clamp(dx,-1,1);dy=clamp(dy,-1,1);joyMoveX=dx;joyMoveY=-dy;knobL.style.left=(dx*40+50)+"%";knobL.style.top=(dy*40+50)+"%";});
+  joyL.addEventListener("pointerup",()=>{jl=false;joyMoveX=joyMoveY=0;knobL.style.left='50%';knobL.style.top='50%';});
+  joyL.addEventListener("pointercancel",()=>{jl=false;joyMoveX=joyMoveY=0;knobL.style.left='50%';knobL.style.top='50%';});
+  joyR.addEventListener("pointerdown",e=>{jr=true;joyR.setPointerCapture(e.pointerId);});
+  joyR.addEventListener("pointermove",e=>{if(!jr)return;const r=joyR.getBoundingClientRect();let dx=(e.clientX-r.left-r.width/2)/(r.width/2);let dy=(e.clientY-r.top-r.height/2)/(r.height/2);dx=clamp(dx,-1,1);dy=clamp(dy,-1,1);joyLookX=dx;joyLookY=dy;knobR.style.left=(dx*40+50)+"%";knobR.style.top=(dy*40+50)+"%";});
+  joyR.addEventListener("pointerup",()=>{jr=false;joyLookX=joyLookY=0;knobR.style.left='50%';knobR.style.top='50%';});
+  joyR.addEventListener("pointercancel",()=>{jr=false;joyLookX=joyLookY=0;knobR.style.left='50%';knobR.style.top='50%';});
+  const bind=(id,fn)=>{const el=$$(id);el.addEventListener("touchstart",e=>{e.preventDefault();fn(true);});el.addEventListener("touchend",e=>{e.preventDefault();fn(false);});};
+  bind("btnUp",v=>btnUp=v);
+  bind("btnDown",v=>btnDown=v);
+  bind("btnBoost",v=>btnBoost=v);
+  bind("btnBrake",v=>btnBrake=v);
+}
+if(touchMode) setupTouch();
 let shipRadius = 2.5;
 
 glCanvas.addEventListener('click', ()=>{
-  if(!pointerLocked){
+  if(!pointerLocked && !touchMode){
     glCanvas.requestPointerLock().catch(()=>{});
   }
 });
@@ -489,7 +527,7 @@ document.addEventListener('pointerlockchange', ()=>{
   if(pointerLocked) intro.classList.add('hidden'); else intro.classList.remove('hidden');
 });
 addEventListener('mousemove', (e)=>{
-  if(!pointerLocked || landed) return;
+  if(touchMode || !pointerLocked || landed) return;
   const sens = 0.0025 * (warp? 0.5: 1);
   const yawD = -e.movementX * sens;
   const pitchD = (invertY? 1:-1) * e.movementY * sens;
@@ -517,35 +555,36 @@ function right(){ return quatRotate(orient,[1,0,0]); }
 function up(){ return quatRotate(orient,[0,1,0]); }
 
 function updateControls(dt){
-  const acc= warp? 400 : 80;
-  const boost = keys.has('shift') ? 2.0 : 1.0;
-  const brake = keys.has('control') ? 0.6 : 1.0;
-  // throttle target from inputs
+  if(touchMode){
+    const sens = 0.08 * (warp?0.5:1);
+    const yawD = -joyLookX * sens;
+    const pitchD = joyLookY * sens * (invertY?1:-1);
+    const upAxis = quatRotate(orient,[0,1,0]);
+    const rightAxis = quatRotate(orient,[1,0,0]);
+    const qYaw = quatFromAxisAngle(upAxis, yawD);
+    const qPitch = quatFromAxisAngle(rightAxis, pitchD);
+    orient = quatNormalize(quatMul(qPitch, quatMul(qYaw, orient)));
+  }
+  const acc = warp?400:80;
+  const boost = (keys.has("shift") || btnBoost) ? 2.0 : 1.0;
+  const brake = (keys.has("control") || btnBrake) ? 0.6 : 1.0;
   let t = targetThrottle;
-  if(keys.has('w')) t += 0.8*dt*boost;
-  if(keys.has('s')) t -= 0.8*dt;
-  t = clamp(t, 0, 1);
+  if(keys.has("w")) t += 0.8*dt*boost;
+  if(keys.has("s")) t -= 0.8*dt;
+  t += joyMoveY*dt*0.8;
+  t = clamp(t,0,1);
   targetThrottle = t;
-  // damp throttle
   throttle = mix(throttle, t, 1-Math.exp(-dt*4));
-
-  // base speed curve: cubic to give fine control at low speeds
-  const speed = (warp? 1500 : 250) * Math.pow(throttle, 3) * boost * brake;
-  // acceleration towards target forward velocity
+  const speed = (warp?1500:250) * Math.pow(throttle,3) * boost * brake;
   const dir = forward();
   const vTarget = mul(dir, speed);
-  // strafe
-  if(keys.has('a')) vel = add(vel, mul(right(), -acc*dt*0.5));
-  if(keys.has('d')) vel = add(vel, mul(right(),  acc*dt*0.5));
-  if(keys.has('q')) vel = add(vel, mul(up(),    -acc*dt*0.5));
-  if(keys.has('e')) vel = add(vel, mul(up(),     acc*dt*0.5));
-
-  // blend current vel toward vTarget
+  if(keys.has("a")) vel = add(vel, mul(right(), -acc*dt*0.5));
+  if(keys.has("d")) vel = add(vel, mul(right(),  acc*dt*0.5));
+  if(keys.has("q") || btnDown) vel = add(vel, mul(up(), -acc*dt*0.5));
+  if(keys.has("e") || btnUp)   vel = add(vel, mul(up(),  acc*dt*0.5));
+  vel = add(vel, mul(right(), joyMoveX*acc*dt*0.5));
   vel = add( mul(vel, Math.exp(-dt*2.5)), mul(vTarget, 1 - Math.exp(-dt*2.5)) );
-
-  // move
   camPos = add(camPos, mul(vel, dt));
-
 }
 
 /*──────────────────────────────────────────────────────────────────────────────
@@ -1509,4 +1548,4 @@ Line500: reserved for future expansion.
 </script>
 </body>
 </html>
-<!-- What changed & why: corrected yaw direction and handled pointer-lock promise to avoid console error -->
+<!-- What changed & why: add mobile touch controls and document mouse-axis invariant -->

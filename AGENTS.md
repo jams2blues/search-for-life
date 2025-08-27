@@ -18,6 +18,8 @@ These rules **always** apply. Never regress them. Append to this list as new con
 10. **Mint‑safe:** Embed a tiny `noscript` PNG preview and a strict CSP meta tag. The token page must render without JS in marketplaces.  
 11. **Keyboard rate‑limit:** Debounce destructive keys (restart/warp).  
 12. **Repo hygiene:** lint‑clean (`eslint:recommended` style if used), comments explain non‑obvious math, no dead code. All new work lands behind feature flags if risky.
+13. **Canonical mouse axes:** horizontal motion yaw left/right; vertical motion pitch up/down. Default non-inverted; toggle with I.
+14. **Touch controls:** show virtual joystick and buttons for move, look, boost, brake, and vertical thrust on touch devices.
 
 ---
 
