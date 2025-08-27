@@ -1,3 +1,7 @@
+<!--Developed by @jams2blues – ZeroContract Studio
+File: SearchForLife_v10_infinite.html
+Rev: r13
+Summary: Infinite deterministic pixel-universe with 6DOF flight and warp-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -34,6 +38,15 @@
     width:20px;height:20px;border-radius:50%;border:2px solid var(--hud-br); pointer-events:none;
     box-shadow:0 0 0 1px rgba(0,255,255,.15), 0 0 6px rgba(0,255,255,.25) inset;
   }
+  .joy{position:fixed;z-index:4;width:120px;height:120px;border:2px solid var(--hud-br);border-radius:50%;background:rgba(0,0,0,.25);touch-action:none;display:none;}
+  .joy>div{position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;background:rgba(0,255,255,.4);}
+  #joyL{left:1rem;bottom:1rem;}
+  #joyR{right:1rem;bottom:1rem;}
+  .btn{position:fixed;z-index:4;width:48px;height:48px;border:2px solid var(--hud-br);border-radius:8px;background:rgba(0,0,0,.25);color:var(--hud);display:none;align-items:center;justify-content:center;touch-action:none;}
+  #btnUp{right:1rem;bottom:7rem;}
+  #btnDown{right:1rem;bottom:1rem;}
+  #btnBoost{left:calc(50% - 60px);bottom:1rem;}
+  #btnBrake{left:calc(50% + 12px);bottom:1rem;}
   #framegraph{
     position:fixed;right:.6rem;top:.6rem;z-index:3;pointer-events:none;
     width:240px;height:60px;border:1px solid var(--hud-br);background:rgba(0,0,0,.25)
@@ -48,6 +61,12 @@
 </pre>
 <pre id="hud" class="hidden"></pre>
 <pre id="msg"></pre>
+<div id="joyL" class="joy"><div></div></div>
+<div id="joyR" class="joy"><div></div></div>
+<div id="btnUp" class="btn">▲</div>
+<div id="btnDown" class="btn">▼</div>
+<div id="btnBoost" class="btn">⚡</div>
+<div id="btnBrake" class="btn">⛔</div>
 
 <script>
 /*──────────────────────────────────────────────────────────────────────────────
@@ -77,6 +96,9 @@ const hud = $$('hud');
 const intro = $$('intro');
 const msg = $$('msg');
 const framegraph = $$('framegraph');
+let touchMode = "ontouchstart" in window;
+let joyMoveX=0, joyMoveY=0, joyLookX=0, joyLookY=0;
+let btnUp=false, btnDown=false, btnBoost=false, btnBrake=false;
 let gl;
 
 let DPR=1, W=0, H=0;
@@ -151,18 +173,6 @@ const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
 const mul=(v,s)=>[v[0]*s,v[1]*s,v[2]*s];
 const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
-
-function quatFromEuler(yaw,pitch,roll){
-  const cy=Math.cos(yaw*0.5), sy=Math.sin(yaw*0.5);
-  const cp=Math.cos(pitch*0.5), sp=Math.sin(pitch*0.5);
-  const cr=Math.cos(roll*0.5), sr=Math.sin(roll*0.5);
-  return [
-    sr*cp*cy - cr*sp*sy, // x
-    cr*sp*cy + sr*cp*sy, // y
-    cr*cp*sy - sr*sp*cy, // z
-    cr*cp*cy + sr*sp*sy  // w
-  ];
-}
 function quatMul(a,b){
   const ax=a[0], ay=a[1], az=a[2], aw=a[3];
   const bx=b[0], by=b[1], bz=b[2], bw=b[3];
@@ -176,8 +186,16 @@ function quatMul(a,b){
 function quatRotate(q, v){
   const x=q[0], y=q[1], z=q[2], w=q[3];
   const u=[x,y,z];
-  const s = 2*dot(u,v);
-  return add(add(mul(u, s), mul(v, (w*w - dot(u,u)))), mul(cross(u,v), 2*w));
+  const s=2*dot(u,v);
+  return add(add(mul(u,s), mul(v, w*w - dot(u,u))), mul(cross(u,v), 2*w));
+}
+function quatFromAxisAngle(axis, ang){
+  const s=Math.sin(ang/2);
+  return [axis[0]*s, axis[1]*s, axis[2]*s, Math.cos(ang/2)];
+}
+function quatNormalize(q){
+  const l=Math.hypot(q[0],q[1],q[2],q[3])||1;
+  return [q[0]/l,q[1]/l,q[2]/l,q[3]/l];
 }
 
 function hsl2rgb(h,s,l){
@@ -435,7 +453,7 @@ void main(){
 /*──────────────────────────────────────────────────────────────────────────────
   6) Buffers for starfield
 ──────────────────────────────────────────────────────────────────────────────*/
-function makeStarfield(N=10000, scale=2000){
+function makeStarfield(N=4000, scale=2000){
   // deterministically scatter in a cube
   const pos=new Float32Array(N*3);
   const col=new Float32Array(N*3);
@@ -468,7 +486,7 @@ function makeStarfield(N=10000, scale=2000){
 const keys=new Set();
 let pointerLocked=false;
 let invertY=false;
-let yaw=0, pitch=0, roll=0;
+let orient=[0,0,0,1];
 let camPos=[0,0,80];
 let vel=[0,0,0];
 let throttle=0;             // 0..1
@@ -477,11 +495,31 @@ let warp=false;             // FTL engaged
 let landed=false;
 let lives=3;
 let hull=100;
+function setupTouch(){
+  const joyL=$$("joyL"), joyR=$$("joyR"), knobL=joyL.firstElementChild, knobR=joyR.firstElementChild;
+  [joyL,joyR,$$("btnUp"),$$("btnDown"),$$("btnBoost"),$$("btnBrake")].forEach(el=>{el.style.display="flex";});
+  intro.textContent="Tap to start — left pad move • right pad look • ▲ ascend • ▼ descend • ⚡ boost • ⛔ brake • H HUD";
+  let jl=false,jr=false;
+  joyL.addEventListener("pointerdown",e=>{jl=true;joyL.setPointerCapture(e.pointerId);});
+  joyL.addEventListener("pointermove",e=>{if(!jl)return;const r=joyL.getBoundingClientRect();let dx=(e.clientX-r.left-r.width/2)/(r.width/2);let dy=(e.clientY-r.top-r.height/2)/(r.height/2);dx=clamp(dx,-1,1);dy=clamp(dy,-1,1);joyMoveX=dx;joyMoveY=-dy;knobL.style.left=(dx*40+50)+"%";knobL.style.top=(dy*40+50)+"%";});
+  joyL.addEventListener("pointerup",()=>{jl=false;joyMoveX=joyMoveY=0;knobL.style.left='50%';knobL.style.top='50%';});
+  joyL.addEventListener("pointercancel",()=>{jl=false;joyMoveX=joyMoveY=0;knobL.style.left='50%';knobL.style.top='50%';});
+  joyR.addEventListener("pointerdown",e=>{jr=true;joyR.setPointerCapture(e.pointerId);});
+  joyR.addEventListener("pointermove",e=>{if(!jr)return;const r=joyR.getBoundingClientRect();let dx=(e.clientX-r.left-r.width/2)/(r.width/2);let dy=(e.clientY-r.top-r.height/2)/(r.height/2);dx=clamp(dx,-1,1);dy=clamp(dy,-1,1);joyLookX=dx;joyLookY=dy;knobR.style.left=(dx*40+50)+"%";knobR.style.top=(dy*40+50)+"%";});
+  joyR.addEventListener("pointerup",()=>{jr=false;joyLookX=joyLookY=0;knobR.style.left='50%';knobR.style.top='50%';});
+  joyR.addEventListener("pointercancel",()=>{jr=false;joyLookX=joyLookY=0;knobR.style.left='50%';knobR.style.top='50%';});
+  const bind=(id,fn)=>{const el=$$(id);el.addEventListener("touchstart",e=>{e.preventDefault();fn(true);});el.addEventListener("touchend",e=>{e.preventDefault();fn(false);});};
+  bind("btnUp",v=>btnUp=v);
+  bind("btnDown",v=>btnDown=v);
+  bind("btnBoost",v=>btnBoost=v);
+  bind("btnBrake",v=>btnBrake=v);
+}
+if(touchMode) setupTouch();
 let shipRadius = 2.5;
 
 glCanvas.addEventListener('click', ()=>{
-  if(!pointerLocked){
-    glCanvas.requestPointerLock();
+  if(!pointerLocked && !touchMode){
+    glCanvas.requestPointerLock().catch(()=>{});
   }
 });
 document.addEventListener('pointerlockchange', ()=>{
@@ -489,11 +527,15 @@ document.addEventListener('pointerlockchange', ()=>{
   if(pointerLocked) intro.classList.add('hidden'); else intro.classList.remove('hidden');
 });
 addEventListener('mousemove', (e)=>{
-  if(!pointerLocked || landed) return;
+  if(touchMode || !pointerLocked || landed) return;
   const sens = 0.0025 * (warp? 0.5: 1);
-  yaw += e.movementX * sens;
-  pitch += (invertY? 1:-1) * e.movementY * sens;
-  pitch = clamp(pitch, -PI*0.48, PI*0.48);
+  const yawD = -e.movementX * sens;
+  const pitchD = (invertY? 1:-1) * e.movementY * sens;
+  const upAxis = quatRotate(orient,[0,1,0]);
+  const rightAxis = quatRotate(orient,[1,0,0]);
+  const qYaw = quatFromAxisAngle(upAxis, yawD);
+  const qPitch = quatFromAxisAngle(rightAxis, pitchD);
+  orient = quatNormalize(quatMul(qPitch, quatMul(qYaw, orient)));
 });
 
 addEventListener('keydown', (e)=>{
@@ -507,49 +549,49 @@ addEventListener('keydown', (e)=>{
 });
 addEventListener('keyup', (e)=>{ keys.delete(e.key.toLowerCase()); });
 
-function forward(){ return quatRotate(quatFromEuler(yaw,pitch,roll), [0,0,-1]); }
-function right(){ return quatRotate(quatFromEuler(yaw,pitch,roll), [1,0,0]); }
-function up(){ return quatRotate(quatFromEuler(yaw,pitch,roll), [0,1,0]); }
+// orientation helpers
+function forward(){ return quatRotate(orient,[0,0,-1]); }
+function right(){ return quatRotate(orient,[1,0,0]); }
+function up(){ return quatRotate(orient,[0,1,0]); }
 
 function updateControls(dt){
-  const acc= warp? 400 : 80;
-  const boost = keys.has('shift') ? 2.0 : 1.0;
-  const brake = keys.has('control') ? 0.6 : 1.0;
-  // throttle target from inputs
+  if(touchMode){
+    const sens = 0.08 * (warp?0.5:1);
+    const yawD = -joyLookX * sens;
+    const pitchD = joyLookY * sens * (invertY?1:-1);
+    const upAxis = quatRotate(orient,[0,1,0]);
+    const rightAxis = quatRotate(orient,[1,0,0]);
+    const qYaw = quatFromAxisAngle(upAxis, yawD);
+    const qPitch = quatFromAxisAngle(rightAxis, pitchD);
+    orient = quatNormalize(quatMul(qPitch, quatMul(qYaw, orient)));
+  }
+  const acc = warp?400:80;
+  const boost = (keys.has("shift") || btnBoost) ? 2.0 : 1.0;
+  const brake = (keys.has("control") || btnBrake) ? 0.6 : 1.0;
   let t = targetThrottle;
-  if(keys.has('w')) t += 0.8*dt*boost;
-  if(keys.has('s')) t -= 0.8*dt;
-  t = clamp(t, 0, 1);
+  if(keys.has("w")) t += 0.8*dt*boost;
+  if(keys.has("s")) t -= 0.8*dt;
+  t += joyMoveY*dt*0.8;
+  t = clamp(t,0,1);
   targetThrottle = t;
-  // damp throttle
   throttle = mix(throttle, t, 1-Math.exp(-dt*4));
-
-  // base speed curve: cubic to give fine control at low speeds
-  const speed = (warp? 1500 : 250) * Math.pow(throttle, 3) * boost * brake;
-  // acceleration towards target forward velocity
+  const speed = (warp?1500:250) * Math.pow(throttle,3) * boost * brake;
   const dir = forward();
   const vTarget = mul(dir, speed);
-  // strafe
-  if(keys.has('a')) vel = add(vel, mul(right(), -acc*dt*0.5));
-  if(keys.has('d')) vel = add(vel, mul(right(),  acc*dt*0.5));
-  if(keys.has('q')) vel = add(vel, mul(up(),    -acc*dt*0.5));
-  if(keys.has('e')) vel = add(vel, mul(up(),     acc*dt*0.5));
-
-  // blend current vel toward vTarget
+  if(keys.has("a")) vel = add(vel, mul(right(), -acc*dt*0.5));
+  if(keys.has("d")) vel = add(vel, mul(right(),  acc*dt*0.5));
+  if(keys.has("q") || btnDown) vel = add(vel, mul(up(), -acc*dt*0.5));
+  if(keys.has("e") || btnUp)   vel = add(vel, mul(up(),  acc*dt*0.5));
+  vel = add(vel, mul(right(), joyMoveX*acc*dt*0.5));
   vel = add( mul(vel, Math.exp(-dt*2.5)), mul(vTarget, 1 - Math.exp(-dt*2.5)) );
-
-  // move
   camPos = add(camPos, mul(vel, dt));
-
-  // roll damping
-  roll *= Math.exp(-dt*2.5);
 }
 
 /*──────────────────────────────────────────────────────────────────────────────
   8) Sector streaming & world generation
 ──────────────────────────────────────────────────────────────────────────────*/
 const SECTOR = 2500; // cube edge length in world units
-const PREFETCH = 2;  // 2 → load 5×5×5, but active draw uses distance check
+const PREFETCH = 1;  // 1 → load 3×3×3, reduces sector churn
 
 const systems = new Map();   // key "x,y,z" → system object
 const stars   = [];          // culled draw list for this frame
@@ -597,7 +639,7 @@ function makeSystem(ix,iy,iz){
   sys.bodies.push(star);
 
   // planets (0..7), slow orbits with large radii
-  const planetCount = localR.int(1, 6);
+  const planetCount = localR.int(1, 3);
   let orbitR = starRadius * localR.num(6, 10);
   for(let i=0;i<planetCount;i++){
     const isGas = localR.dec() < 0.4;
@@ -617,9 +659,9 @@ function makeSystem(ix,iy,iz){
                      orbitR, orbitSpeed:speed, orbitPhase:phase, orbitN:orbitNormal, pos:[base[0]+orbitR, base[1], base[2]] };
     sys.bodies.push(planet);
 
-    // maybe moons
-    if(localR.dec()<0.7){
-      const moons = localR.int(0, 3);
+    // maybe moons (lighter)
+    if(localR.dec()<0.5){
+      const moons = localR.int(0, 1);
       planet.moons = [];
       let mR = size * 2.2;
       for(let m=0;m<moons;m++){
@@ -635,21 +677,7 @@ function makeSystem(ix,iy,iz){
     orbitR += size*localR.num(20, 45);
   }
 
-  // asteroids / debris ring random
-  if(localR.dec()<0.5){
-    const beltR = starRadius*localR.num(14, 22);
-    const count = localR.int(120, 300);
-    const rocks = [];
-    for(let i=0;i<count;i++){
-      const ang = localR.num(0,TAU);
-      const rr = beltR * (1+localR.num(-0.07,0.07));
-      const yj = localR.num(-4.0,4.0);
-      const size = localR.num(0.2, 1.2);
-      const color = [0.45+localR.num(-0.1,0.1), 0.42+localR.num(-0.1,0.1), 0.4+localR.num(-0.1,0.1)];
-      rocks.push({ang, rr, yj, size, color, speed: localR.num(0.0002, 0.00045)});
-    }
-    sys.rocks = { beltR, rocks };
-  }
+
 
   return sys;
 }
@@ -699,7 +727,7 @@ function mat4Perspective(fovy, aspect, near, far){
 let progSphere, progStar, progStarfield, progFS;
 let sphere, quad, starfield;
 let projection, view;
-let renderScale = 1.0; // dynamic for FPS
+let renderScale = 0.75; // start scaled for pixel-art performance
 
 function initScene(){
   initGL();
@@ -710,15 +738,16 @@ function initScene(){
   progFS = makeProgram(VS_FS, FS_WARP);
   sphere = makeIcoSphere(3);
   quad   = makeQuad();
-  starfield = makeStarfield(8000, 4000);
+  starfield = makeStarfield(4000, 3000);
 }
 
 function setCommonMatrices(){
   const aspect = (W/renderScale) / (H/renderScale);
   projection = mat4Perspective(PI/3, aspect, 0.1, 100000.0);
-  // view from yaw/pitch/roll & camPos
-  const q = quatFromEuler(yaw,pitch,roll);
-  const f = forward(), r=right(), u=up();
+  // view from orientation quaternion & camPos
+  const f = forward();
+  const r = right();
+  const u = up();
   // construct inverse rotation/translation
   view=[
     r[0], u[0], -f[0], 0,
@@ -810,16 +839,7 @@ function drawSystem(sys, t){
     }
   }
 
-  // asteroids
-  if(sys.rocks){
-    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    for(const r of sys.rocks.rocks){
-      const ang = r.ang + r.speed*t*60000.0;
-      const p = [sys.center[0] + Math.cos(ang)*r.rr, sys.center[1] + r.yj, sys.center[2] + Math.sin(ang)*r.rr];
-      drawSphere(p, r.size, r.color, 0.0, false);
-    }
-    gl.disable(gl.BLEND);
-  }
+  // asteroids removed for performance
 }
 
 /*──────────────────────────────────────────────────────────────────────────────
@@ -903,8 +923,8 @@ function updateFPS(t){
   if(avgFps<28 && renderScale>0.6){ renderScale = Math.max(0.6, renderScale-0.05); }
   else if(avgFps>56 && renderScale<1.0){ renderScale = Math.min(1.0, renderScale+0.05); }
   if(starfield){
-    if(avgFps<30 && starfield.drawCount>2000){
-      starfield.drawCount = Math.max(2000, starfield.drawCount-500);
+    if(avgFps<30 && starfield.drawCount>1000){
+      starfield.drawCount = Math.max(1000, starfield.drawCount-500);
     } else if(avgFps>50 && starfield.drawCount<starfield.count){
       starfield.drawCount = Math.min(starfield.count, starfield.drawCount+500);
     }
@@ -954,11 +974,25 @@ function toast(text){
 }
 
 function updateHUD(t){
+  const speed=len(vel);
+  const fw=dot(vel, forward());
+  const maxGauge=warp? vFTL : 200;
+  const norm=clamp(fw/maxGauge,-1,1);
+  const barLen=16; const mid=barLen/2;
+  let bar='';
+  for(let i=0;i<barLen;i++){
+    if(i===mid){ bar+='|'; continue; }
+    const rel=i<mid?(mid-i)/mid:(i-mid)/(barLen-mid);
+    if((i>mid && norm>0 && rel<=norm) || (i<mid && norm<0 && rel<=-norm)) bar+='=';
+    else bar+='.';
+  }
+  const dir = fw>=0? 'FWD':'REV';
   const s = [
     'ZeroUnbound — Search for Life v10',
     `Seed: 0x${seedHex}`,
     `FPS: ${fps.toFixed(1)}  tierΔ renderScale:${renderScale.toFixed(2)}`,
-    `Pos: ${camPos.map(v=>v.toFixed(1)).join(', ')}  |v|:${len(vel).toFixed(2)}`,
+    `Pos: ${camPos.map(v=>v.toFixed(1)).join(', ')}  |v|:${speed.toFixed(2)}`,
+    `Speed ${dir} ${bar} ${Math.abs(fw).toFixed(1)}`,
     `Throttle:${(throttle*100).toFixed(0)}%  Warp:${warp?'ON':'OFF'}  Lives:${lives}  Hull:${hull.toFixed(0)}%`,
     'Keys: WASD/QE move  Shift accel  Ctrl brake  J warp  L land  X takeoff  I invertY  H HUD  F framegraph'
   ].join('\\n');
@@ -1514,3 +1548,4 @@ Line500: reserved for future expansion.
 </script>
 </body>
 </html>
+<!-- What changed & why: add mobile touch controls and document mouse-axis invariant -->

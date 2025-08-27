@@ -8,6 +8,7 @@ You are Codex, the primary coding agent for **Search for Life** (SFL). You write
 - Auto‑tier performance to maintain 60/30 FPS targets.
 - Update `/docs/Master_Overview_And_Manifest_SFL.md` and `/docs/AGENTS.md` Progress Ledger on every merge.
 
+- Mouse axes: left/right→yaw, up/down→pitch (non‑inverted; `I` toggles). Touch devices must expose virtual joystick + buttons for equivalent controls.
 **General coding rules**
 - ES2020+, no transpilation. Prefer small pure functions; isolate side effects.
 - Ship with assertions & dev toggles guarded behind `/* dev */` blocks that default to off.

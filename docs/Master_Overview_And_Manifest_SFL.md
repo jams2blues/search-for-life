@@ -1,6 +1,6 @@
 # Search for Life — Master_Overview_And_Manifest_SFL.md
 **Repo**: `jams2blues/search-for-life`  
-**Last updated**: 2025-08-26 16:43:30 UTC  
+**Last updated**: 2025-08-27 17:13:11 UTC
 **Maintainers**: @jams2blues (owner), ZeroContract Studio (project), **AI Agents**: Codex primary + GPT‑5 Pro (you) as PM/Architect/QA.
 
 ---
@@ -22,7 +22,7 @@ This document is the canonical, exhaustive manifest. New agents **must read this
 4. **Device‑agnostic**: Resolution and aspect‑ratio independent. Device‑pixel aware canvas; must deliver 60 FPS on a modern discrete GPU and remain playable on mid devices through *automatic fidelity scaling* (instancing caps, LOD, temporal upscaling, dynamic physics tick).  
 5. **Graceful fallback**: If WebGL2 fails, degrade to Canvas2D starfield + billboard planets with navigation retained rather than a black screen.  
 6. **No deps**: No bundlers, no node_modules at runtime. Dev tooling is allowed only in the Codex environment.  
-7. **User inputs (defaults)**: pointer‑lock mouse look (Y non‑inverted by default), `WASD` + `QE` translate, `SHIFT` boost, `CTRL` dampers/brake, `J` warp, `L` land, `X` takeoff, `I` invert Y toggle, `H` HUD, `F` framegraph.  
+7. **User inputs (defaults)**: pointer‑lock mouse look (left/right→yaw, up/down→pitch, non‑inverted by default; `I` toggles). `WASD` + `QE` translate, `SHIFT` boost, `CTRL` dampers/brake, `J` warp, `L` land, `X` takeoff, `H` HUD, `F` framegraph. Touch devices display virtual joystick + buttons for equivalent controls.
 8. **Save/Restore**: Persist last known seed and ship pose to `localStorage` (key `sfl.v1.state`) only; feature must be optional and never networked.
 9. **Noscript poster**: A tiny inline PNG for marketplaces must remain embedded.  
 10. **Copyright**: All code authored for SFL is © ZeroContract Studio / jams2blues and licensed for minting and display on-chain; third‑party code is prohibited (we write our own).
@@ -86,10 +86,13 @@ This document is the canonical, exhaustive manifest. New agents **must read this
 ---
 
 ## 5) Controls & HUD (v10)
-- Pointer‑lock (non‑inverted Y by default; toggle `I`).  
-- HUD shows seed, FPS, quality tier, position (sector + local), velocity, lives, warp charge, and heat/radiation near stars.  
-- Keys: documented in §1 invariants.  
+- Pointer‑lock (non‑inverted Y by default; toggle `I`; axes mapping is invariant).
+- Touch: left pad move, right pad look, buttons for up/down, boost, brake.
+- HUD shows seed, FPS, quality tier, position (sector + local), velocity, lives, warp charge, and heat/radiation near stars.
+- Inputs: see §1 invariants.
 - Game states: `FLIGHT`, `WARP`, `LANDED`, `DEAD`.
+
+---
 
 ---
 
@@ -116,6 +119,7 @@ This document is the canonical, exhaustive manifest. New agents **must read this
 ## 8) Progress Ledger (append‑only)
 - 2025-08-26 16:43:30 UTC — **Docs & Codex bootstrap**: added AGENTS.md, environment guide, super‑prompt & task template; created setup/maintenance scripts. (Author: GPT‑5 Pro)  
 
+- 2025-08-27 17:13:11 UTC — Documented mouse-axis invariant and initial mobile controls. (Author: GPT-5 Pro)
 ---
 
 ## 9) Change Log (high‑level)
