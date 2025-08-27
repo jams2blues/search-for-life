@@ -152,34 +152,6 @@ const mul=(v,s)=>[v[0]*s,v[1]*s,v[2]*s];
 const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
 
-function quatFromEuler(yaw,pitch,roll){
-  const cy=Math.cos(yaw*0.5), sy=Math.sin(yaw*0.5);
-  const cp=Math.cos(pitch*0.5), sp=Math.sin(pitch*0.5);
-  const cr=Math.cos(roll*0.5), sr=Math.sin(roll*0.5);
-  return [
-    sr*cp*cy - cr*sp*sy, // x
-    cr*sp*cy + sr*cp*sy, // y
-    cr*cp*sy - sr*sp*cy, // z
-    cr*cp*cy + sr*sp*sy  // w
-  ];
-}
-function quatMul(a,b){
-  const ax=a[0], ay=a[1], az=a[2], aw=a[3];
-  const bx=b[0], by=b[1], bz=b[2], bw=b[3];
-  return [
-    aw*bx + ax*bw + ay*bz - az*by,
-    aw*by - ax*bz + ay*bw + az*bx,
-    aw*bz + ax*by - ay*bx + az*bw,
-    aw*bw - ax*bx - ay*by - az*bz
-  ];
-}
-function quatRotate(q, v){
-  const x=q[0], y=q[1], z=q[2], w=q[3];
-  const u=[x,y,z];
-  const s = 2*dot(u,v);
-  return add(add(mul(u, s), mul(v, (w*w - dot(u,u)))), mul(cross(u,v), 2*w));
-}
-
 function hsl2rgb(h,s,l){
   h=(h%360+360)%360/360;
   let r,g,b;
@@ -507,12 +479,24 @@ addEventListener('keydown', (e)=>{
 });
 addEventListener('keyup', (e)=>{ keys.delete(e.key.toLowerCase()); });
 
-// compose orientation from yaw (Y), pitch (X), roll (Z)
-// order matters: yaw → pitch → roll
-function orientationQuat(){ return quatFromEuler(yaw,pitch,roll); }
-function forward(){ return quatRotate(orientationQuat(), [0,0,-1]); }
-function right(){ return quatRotate(orientationQuat(), [1,0,0]); }
-function up(){ return quatRotate(orientationQuat(), [0,1,0]); }
+// camera orientation helpers (FPS-style yaw/pitch)
+function forward(){
+  const cy=Math.cos(yaw), sy=Math.sin(yaw);
+  const cp=Math.cos(pitch), sp=Math.sin(pitch);
+  return [sy*cp, sp, -cy*cp];
+}
+function right(){
+  const cy=Math.cos(yaw), sy=Math.sin(yaw);
+  return [cy, 0, sy];
+}
+function up(){
+  const f=forward(), r=right();
+  return [
+    r[1]*f[2]-r[2]*f[1],
+    r[2]*f[0]-r[0]*f[2],
+    r[0]*f[1]-r[1]*f[0]
+  ];
+}
 
 function updateControls(dt){
   const acc= warp? 400 : 80;
@@ -705,11 +689,10 @@ function initScene(){
 function setCommonMatrices(){
   const aspect = (W/renderScale) / (H/renderScale);
   projection = mat4Perspective(PI/3, aspect, 0.1, 100000.0);
-  // view from yaw/pitch/roll & camPos
-  const q = orientationQuat();
-  const f = quatRotate(q, [0,0,-1]);
-  const r = quatRotate(q, [1,0,0]);
-  const u = quatRotate(q, [0,1,0]);
+  // view from yaw/pitch & camPos
+  const f = forward();
+  const r = right();
+  const u = up();
   // construct inverse rotation/translation
   view=[
     r[0], u[0], -f[0], 0,
