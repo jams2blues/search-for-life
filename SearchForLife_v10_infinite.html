@@ -435,7 +435,7 @@ void main(){
 /*──────────────────────────────────────────────────────────────────────────────
   6) Buffers for starfield
 ──────────────────────────────────────────────────────────────────────────────*/
-function makeStarfield(N=10000, scale=2000){
+function makeStarfield(N=4000, scale=2000){
   // deterministically scatter in a cube
   const pos=new Float32Array(N*3);
   const col=new Float32Array(N*3);
@@ -549,7 +549,7 @@ function updateControls(dt){
   8) Sector streaming & world generation
 ──────────────────────────────────────────────────────────────────────────────*/
 const SECTOR = 2500; // cube edge length in world units
-const PREFETCH = 2;  // 2 → load 5×5×5, but active draw uses distance check
+const PREFETCH = 1;  // 1 → load 3×3×3, reduces sector churn
 
 const systems = new Map();   // key "x,y,z" → system object
 const stars   = [];          // culled draw list for this frame
@@ -597,7 +597,7 @@ function makeSystem(ix,iy,iz){
   sys.bodies.push(star);
 
   // planets (0..7), slow orbits with large radii
-  const planetCount = localR.int(1, 6);
+  const planetCount = localR.int(1, 3);
   let orbitR = starRadius * localR.num(6, 10);
   for(let i=0;i<planetCount;i++){
     const isGas = localR.dec() < 0.4;
@@ -617,9 +617,9 @@ function makeSystem(ix,iy,iz){
                      orbitR, orbitSpeed:speed, orbitPhase:phase, orbitN:orbitNormal, pos:[base[0]+orbitR, base[1], base[2]] };
     sys.bodies.push(planet);
 
-    // maybe moons
-    if(localR.dec()<0.7){
-      const moons = localR.int(0, 3);
+    // maybe moons (lighter)
+    if(localR.dec()<0.5){
+      const moons = localR.int(0, 1);
       planet.moons = [];
       let mR = size * 2.2;
       for(let m=0;m<moons;m++){
@@ -635,21 +635,7 @@ function makeSystem(ix,iy,iz){
     orbitR += size*localR.num(20, 45);
   }
 
-  // asteroids / debris ring random
-  if(localR.dec()<0.5){
-    const beltR = starRadius*localR.num(14, 22);
-    const count = localR.int(120, 300);
-    const rocks = [];
-    for(let i=0;i<count;i++){
-      const ang = localR.num(0,TAU);
-      const rr = beltR * (1+localR.num(-0.07,0.07));
-      const yj = localR.num(-4.0,4.0);
-      const size = localR.num(0.2, 1.2);
-      const color = [0.45+localR.num(-0.1,0.1), 0.42+localR.num(-0.1,0.1), 0.4+localR.num(-0.1,0.1)];
-      rocks.push({ang, rr, yj, size, color, speed: localR.num(0.0002, 0.00045)});
-    }
-    sys.rocks = { beltR, rocks };
-  }
+
 
   return sys;
 }
@@ -699,7 +685,7 @@ function mat4Perspective(fovy, aspect, near, far){
 let progSphere, progStar, progStarfield, progFS;
 let sphere, quad, starfield;
 let projection, view;
-let renderScale = 1.0; // dynamic for FPS
+let renderScale = 0.75; // start scaled for pixel-art performance
 
 function initScene(){
   initGL();
@@ -710,7 +696,7 @@ function initScene(){
   progFS = makeProgram(VS_FS, FS_WARP);
   sphere = makeIcoSphere(3);
   quad   = makeQuad();
-  starfield = makeStarfield(8000, 4000);
+  starfield = makeStarfield(4000, 3000);
 }
 
 function setCommonMatrices(){
@@ -810,16 +796,7 @@ function drawSystem(sys, t){
     }
   }
 
-  // asteroids
-  if(sys.rocks){
-    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    for(const r of sys.rocks.rocks){
-      const ang = r.ang + r.speed*t*60000.0;
-      const p = [sys.center[0] + Math.cos(ang)*r.rr, sys.center[1] + r.yj, sys.center[2] + Math.sin(ang)*r.rr];
-      drawSphere(p, r.size, r.color, 0.0, false);
-    }
-    gl.disable(gl.BLEND);
-  }
+  // asteroids removed for performance
 }
 
 /*──────────────────────────────────────────────────────────────────────────────
@@ -903,8 +880,8 @@ function updateFPS(t){
   if(avgFps<28 && renderScale>0.6){ renderScale = Math.max(0.6, renderScale-0.05); }
   else if(avgFps>56 && renderScale<1.0){ renderScale = Math.min(1.0, renderScale+0.05); }
   if(starfield){
-    if(avgFps<30 && starfield.drawCount>2000){
-      starfield.drawCount = Math.max(2000, starfield.drawCount-500);
+    if(avgFps<30 && starfield.drawCount>1000){
+      starfield.drawCount = Math.max(1000, starfield.drawCount-500);
     } else if(avgFps>50 && starfield.drawCount<starfield.count){
       starfield.drawCount = Math.min(starfield.count, starfield.drawCount+500);
     }
